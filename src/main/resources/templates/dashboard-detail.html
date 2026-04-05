@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Case Detail - Risk Operations</title>
+    <!-- WebSocket & Chart 라이브러리 -->
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1.6.1/dist/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Monaco', 'Courier New', 'Consolas', monospace;
+            background: #0a0a0a;
+            color: #ffffff;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        .app-container { display: flex; height: 100vh; overflow: hidden; }
+        
+        /* Sidebar */
+        .sidebar {
+            width: 320px;
+            background: #0f0f0f;
+            border-right: 1px solid #1f2937;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .sidebar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px;
+            border-bottom: 1px solid #1f2937;
+        }
+        
+        .sidebar-header h2 { font-size: 14px; font-weight: 600; }
+        .sidebar-content { flex: 1; overflow-y: auto; padding: 8px; }
+        
+        .incident-card {
+            background: #0a0a0a;
+            border: 1px solid #1f2937;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .incident-card:hover { background: #111827; border-color: #374151; }
+        .incident-header { display: flex; justify-content: space-between; margin-bottom: 8px; }
+        .flex-row { display: flex; align-items: center; gap: 8px; }
+        
+        .severity-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .severity-dot.critical { background: #dc2626; }
+        .severity-dot.high { background: #f97316; }
+        
+        .incident-id { font-size: 12px; font-weight: 600; color: #60a5fa; }
+        .incident-title { display: flex; gap: 8px; margin-bottom: 8px; font-size: 12px; color: #d1d5db; }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            text-transform: uppercase;
+            font-weight: 600;
+            border: 1px solid;
+        }
+        
+        .status-badge.new { background: rgba(96, 165, 250, 0.1); color: #60a5fa; border-color: rgba(96, 165, 250, 0.3); }
+        .status-badge.investigating { background: rgba(251, 191, 36, 0.1); color: #fbbf24; border-color: rgba(251, 191, 36, 0.3); }
+        .status-badge.critical { background: rgba(220, 38, 38, 0.1); color: #dc2626; border-color: rgba(220, 38, 38, 0.3); }
+        
+        /* Main Content */
+        .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            padding: 16px 24px;
+            background: #0f0f0f;
+            border-bottom: 1px solid #1f2937;
+        }
+        
+        .app-logo { display: flex; gap: 12px; align-items: center; }
+        .logo-icon {
+            background: rgba(220, 38, 38, 0.2);
+            color: #dc2626;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+        }
+        
+        .app-title { font-size: 14px; font-weight: 600; }
+        .app-subtitle { font-size: 12px; color: #6b7280; }
+        .header-right { display: flex; gap: 32px; align-items: center; }
+        .status-indicators { display: flex; gap: 24px; padding-left: 24px; border-left: 1px solid #1f2937; }
+        .status-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #9ca3af; }
+        
+        .severity-dot.pulse { animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        
+        .operator-info { display: flex; gap: 12px; align-items: center; padding-left: 24px; border-left: 1px solid #1f2937; }
+        .operator-avatar {
+            width: 32px;
+            height: 32px;
+            background: #2563eb;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .operator-name { font-size: 12px; font-weight: 500; }
+        .operator-status { font-size: 12px; color: #6b7280; }
+        
+        .btn-notification {
+            position: relative;
+            background: transparent;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            padding: 8px;
+            cursor: pointer;
+            color: #9ca3af;
+        }
+        
+        .notification-badge {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            background: #dc2626;
+            color: white;
+            font-size: 10px;
+            font-weight: 600;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        /* Dashboard Main */
+        .dashboard-main { flex: 1; overflow-y: auto; padding: 24px; }
+        .text-muted { font-size: 12px; color: #6b7280; }
+        
+        /* Buttons */
+        .btn {
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        
+        .btn-primary { background: #2563eb; color: white; }
+        .btn-primary:hover { background: #1d4ed8; }
+        .btn-secondary { background: transparent; border: 1px solid #374151; color: white; }
+        .btn-secondary:hover { background: #1f2937; }
+        .btn-warning { background: #f97316; color: white; }
+        .btn-warning:hover { background: #ea580c; }
+        .btn-success { background: #10b981; color: white; }
+        .btn-success:hover { background: #059669; }
+        .btn-icon { background: transparent; border: none; color: #9ca3af; cursor: pointer; padding: 4px; }
+        
+        /* Card */
+        .card { background: #0f0f0f; border: 1px solid #1f2937; border-radius: 8px; overflow: hidden; margin-bottom: 24px; }
+        .card-title { font-size: 14px; font-weight: 600; margin-bottom: 16px; padding: 16px; border-bottom: 1px solid #1f2937; }
+        
+        /* Case Detail */
+        .mb-6 { margin-bottom: 24px; }
+        .case-detail-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; }
+        .case-left-col, .case-right-col { display: flex; flex-direction: column; gap: 24px; }
+        
+        .case-header { padding: 24px; border-bottom: 1px solid #1f2937; }
+        .case-badges { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+        .case-title { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+        .case-description { font-size: 14px; color: #9ca3af; }
+        
+        .case-meta {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 16px;
+        }
+        
+        .meta-item { display: flex; flex-direction: column; }
+        .data-label { font-size: 12px; color: #6b7280; margin-bottom: 4px; }
+        .data-value { font-size: 12px; font-weight: 600; }
+        .data-value.critical { color: #dc2626; }
+        
+        .action-buttons { display: flex; flex-wrap: wrap; gap: 12px; padding: 16px; }
+        
+        /* Timeline */
+        .timeline { padding: 16px; position: relative; }
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 35px;
+            top: 32px;
+            bottom: 16px;
+            width: 1px;
+            background: #1f2937;
+        }
+        
+        .timeline-item { display: flex; gap: 16px; margin-bottom: 24px; position: relative; }
+        .timeline-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #0f0f0f;
+            border: 1px solid #374151;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            z-index: 1;
+        }
+        
+        .timeline-content { flex: 1; }
+        .timeline-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+        .timeline-operator { font-size: 12px; font-weight: 600; }
+        .timeline-description { font-size: 12px; color: #9ca3af; }
+        
+        /* Comments */
+        .comments-list { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+        .comment-item { background: rgba(0, 0, 0, 0.3); border: 1px solid #374151; border-radius: 8px; padding: 16px; }
+        .comment-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .comment-avatar {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #2563eb;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .comment-operator { font-size: 12px; font-weight: 600; }
+        .comment-content { font-size: 12px; color: #d1d5db; }
+        
+        .comment-form { display: flex; gap: 8px; padding: 16px; border-top: 1px solid #1f2937; }
+        .comment-input {
+            flex: 1;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid #374151;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 12px;
+            color: white;
+            font-family: inherit;
+        }
+        
+        .comment-input:focus { outline: none; border-color: #2563eb; }
+        .comment-input::placeholder { color: #6b7280; }
+        
+        /* Metrics */
+        .metrics-list { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+        .metric-item { display: flex; flex-direction: column; }
+        
+        /* Risk Indicators */
+        .risk-indicators { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+        .risk-indicator-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(220, 38, 38, 0.1);
+            border: 1px solid rgba(220, 38, 38, 0.3);
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 12px;
+            color: #f87171;
+        }
+        
+        /* Wallet Info */
+        .wallet-info { padding: 16px; }
+        .wallet-address {
+            font-size: 12px;
+            font-weight: 600;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 12px;
+            border-radius: 6px;
+            word-break: break-all;
+            margin-top: 8px;
+        }
+        
+        .btn-block { width: 100%; margin-top: 12px; }
+        
+        .svg-icon { width: 16px; height: 16px; vertical-align: middle; stroke: currentColor; fill: none; }
+        
+        @media (max-width: 1024px) {
+            .case-detail-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div>
+                    <h2>Active Incidents</h2>
+                    <p class="text-muted">5 cases requiring attention</p>
+                </div>
+            </div>
+            <div class="sidebar-content">
+                <div th:each="incident : ${incidents}" class="incident-card"
+                     th:attr="data-caseid=${incident.caseId}"
+                     onclick="window.location='/case/'+this.getAttribute('data-caseid')">
+                    <div class="incident-header">
+                        <div class="flex-row">
+                            <span class="severity-dot" th:classappend="${incident.severity}"></span>
+                            <span class="incident-id" th:text="${incident.caseId}">CASE-1023</span>
+                        </div>
+                        <span class="text-muted" th:text="${incident.timeAgo}">2m ago</span>
+                    </div>
+                    <div class="incident-title">
+                        <svg class="svg-icon" viewBox="0 0 24 24">
+                            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"></path>
+                        </svg>
+                        <span th:text="${incident.title}">Whale Dump Detected</span>
+                    </div>
+                    <span class="status-badge" th:classappend="${incident.status}" th:text="${incident.status}">investigating</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Header -->
+            <header class="header">
+                <div class="header-left">
+                    <div class="app-logo">
+                        <div class="logo-icon">⚡</div>
+                        <div>
+                            <div class="app-title">Web3 Risk Operations</div>
+                            <div class="app-subtitle" th:text="${currentTime}">Apr 4, 2026 14:30</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="header-right">
+                    <div class="status-indicators">
+                        <div class="status-item">
+                            <span class="severity-dot critical pulse"></span>
+                            <span>3 Critical</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="severity-dot high"></span>
+                            <span>7 Medium</span>
+                        </div>
+                    </div>
+                    <div class="operator-info">
+                        <div class="operator-avatar">OP</div>
+                        <div>
+                            <div class="operator-name">Operator-7</div>
+                            <div class="operator-status">On Duty</div>
+                        </div>
+                    </div>
+                    <button class="btn-notification">
+                        <svg class="svg-icon" viewBox="0 0 24 24">
+                            <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"></path>
+                        </svg>
+                        <span class="notification-badge">3</span>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Case Detail Content -->
+            <main class="dashboard-main">
+                <!-- Back Button -->
+                <div class="mb-6">
+                    <button onclick="window.location='/'" class="btn btn-secondary">
+                        ← Back to Operations Center
+                    </button>
+                </div>
+
+                <div class="case-detail-grid">
+                    <!-- Left Column -->
+                    <div class="case-left-col">
+                        <!-- Case Header -->
+                        <div class="card">
+                            <div class="case-header">
+                                <div class="case-badges">
+                                    <span class="incident-id" th:text="${case.caseId}">CASE-1023</span>
+                                    <span class="severity-dot critical"></span>
+                                    <span class="status-badge investigating" th:text="${case.status}">investigating</span>
+                                    <span class="status-badge critical" th:text="${case.priority}">P1</span>
+                                </div>
+                                <h2 class="case-title" th:text="${case.title}">Whale Dump Detected - ETH/USDT</h2>
+                                <p class="case-description" th:text="${case.description}">Large whale wallet transferred 127,500 ETH</p>
+                            </div>
+                            <div class="case-meta">
+                                <div class="meta-item">
+                                    <div class="data-label">Created</div>
+                                    <div class="data-value" th:text="${case.createdAgo}">2m ago</div>
+                                </div>
+                                <div class="meta-item">
+                                    <div class="data-label">Assignee</div>
+                                    <div class="data-value" th:text="${case.assignee}">Operator-7</div>
+                                </div>
+                                <div class="meta-item">
+                                    <div class="data-label">Chain</div>
+                                    <div class="data-value" th:text="${case.chain}">Ethereum</div>
+                                </div>
+                                <div class="meta-item">
+                                    <div class="data-label">Risk Score</div>
+                                    <div class="data-value critical" th:text="${case.riskScore != null ? case.riskScore + '/100' : '—/100'}">92/100</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Action Panel -->
+                        <div class="card">
+                            <h3 class="card-title">Actions</h3>
+                            <div class="action-buttons">
+                                <button class="btn btn-primary" onclick="assignToMe()">Assign to Me</button>
+                                <button class="btn btn-warning" onclick="escalateCase()">Escalate</button>
+                                <button class="btn btn-success" onclick="resolveCase()">Resolve Case</button>
+                                <button class="btn btn-secondary" onclick="updateStatus()">Update Status</button>
+                                <button class="btn btn-secondary" onclick="addToWatchlist()">Add to Watchlist</button>
+                            </div>
+                        </div>
+
+                        <!-- Investigation Timeline -->
+                        <div class="card">
+                            <h3 class="card-title">Investigation Timeline</h3>
+                            <div class="timeline">
+                                <div th:each="event : ${case.timeline}" class="timeline-item">
+                                    <div class="timeline-icon">
+                                        <svg class="svg-icon" viewBox="0 0 24 24">
+                                            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"></path>
+                                        </svg>
+                                    </div>
+                                    <div class="timeline-content">
+                                        <div class="timeline-header">
+                                            <span class="timeline-operator" th:text="${event.operator}">Operator-7</span>
+                                            <span class="text-muted">•</span>
+                                            <span class="text-muted" th:text="${event.timeAgo}">2m ago</span>
+                                        </div>
+                                        <p class="timeline-description" th:text="${event.description}">Case created from alert</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Operator Comments -->
+                        <div class="card">
+                            <h3 class="card-title">Operator Comments (<span th:text="${#lists.size(case.comments)}">2</span>)</h3>
+                            <div class="comments-list">
+                                <div th:each="comment : ${case.comments}" class="comment-item">
+                                    <div class="comment-header">
+                                        <div class="comment-avatar" th:text="${comment.operatorInitial}">7</div>
+                                        <span class="comment-operator" th:text="${comment.operator}">Operator-7</span>
+                                        <span class="text-muted">•</span>
+                                        <span class="text-muted" th:text="${comment.timeAgo}">1m ago</span>
+                                    </div>
+                                    <p class="comment-content" th:text="${comment.content}">Initial investigation shows...</p>
+                                </div>
+                            </div>
+
+                            <!-- Add Comment Form -->
+                            <form th:action="@{/case/{id}/comment(id=${case.id})}" method="post" class="comment-form">
+                                <input type="text" name="content" placeholder="Add investigation note..." class="comment-input" required>
+                                <button type="submit" class="btn btn-primary">
+                                    <svg class="svg-icon" viewBox="0 0 24 24" style="width: 14px; height: 14px;">
+                                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                                    </svg>
+                                    Add Note
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Right Column -->
+                    <div class="case-right-col">
+                        <!-- Risk Metrics + 게이지 -->
+                        <div class="card">
+                            <h3 class="card-title">Risk Metrics</h3>
+                            <!-- 케이스 리스크 게이지 -->
+                            <div style="position:relative;display:flex;flex-direction:column;align-items:center;padding:16px 16px 0;">
+                                <canvas id="caseRiskGauge" width="200" height="100" style="max-width:200px;"></canvas>
+                                <div style="margin-top:-16px;text-align:center;">
+                                    <div style="font-size:28px;font-weight:700;color:#dc2626;" id="caseRiskScoreVal"
+                                         th:text="${case.riskScore}">92</div>
+                                    <div style="font-size:10px;color:#6b7280;text-transform:uppercase;">Risk Score / 100</div>
+                                </div>
+                            </div>
+                            <div class="metrics-list" style="margin-top:16px;">
+                                <div class="metric-item">
+                                    <div class="data-label">Transfer Amount</div>
+                                    <div class="data-value" th:text="${case.metrics.transferAmount}">127,500 ETH</div>
+                                    <div class="text-muted" th:text="${case.metrics.usdValue}">$243.2M</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="data-label">Wallet Balance</div>
+                                    <div class="data-value" th:text="${case.metrics.walletBalance}">892,300 ETH</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="data-label">Previous Large Transfers</div>
+                                    <div class="data-value" th:text="${case.metrics.previousTransfers}">14 transfers > $50M</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Risk Indicators -->
+                        <div class="card">
+                            <h3 class="card-title">Risk Indicators</h3>
+                            <div class="risk-indicators">
+                                <div th:each="indicator : ${case.metrics.riskIndicators}" class="risk-indicator-item">
+                                    <svg class="svg-icon" viewBox="0 0 24 24" style="width: 14px; height: 14px;">
+                                        <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"></path>
+                                    </svg>
+                                    <span th:text="${indicator}">Large transfer</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Related Wallet -->
+                        <div class="card">
+                            <h3 class="card-title">Related Wallet</h3>
+                            <div class="wallet-info">
+                                <div class="data-label">Wallet Address</div>
+                                <div class="wallet-address" th:text="${case.relatedWallet}">0x742d35Cc6634C0532925a3b844Bc9e7595f3f4a</div>
+                                <button class="btn btn-secondary btn-block">View Wallet Profile</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+<!-- 서버 데이터를 data-* 속성으로 전달 -->
+<div id="roc-case-data"
+     th:attr="data-caseid=${case.caseId},data-risk=${case.riskScore}"
+     style="display:none"></div>
+
+<script>
+
+const CASE_ID       = document.getElementById('roc-case-data').getAttribute('data-caseid') || 'CASE-1023';
+const CURRENT_OP    = 'Operator-7';
+let   caseRiskScore = parseInt(document.getElementById('roc-case-data').getAttribute('data-risk')) || 92;
+
+// ── 1. 케이스 리스크 게이지 초기화 ───────────────────────────────────
+const caseGaugeCtx = document.getElementById('caseRiskGauge').getContext('2d');
+const caseGauge = new Chart(caseGaugeCtx, {
+    type: 'doughnut',
+    data: {
+        datasets: [{
+            data: [caseRiskScore, 100 - caseRiskScore],
+            backgroundColor: [
+                caseRiskScore >= 80 ? '#dc2626' : '#f97316',
+                '#1f2937'
+            ],
+            borderWidth: 0
+        }]
+    },
+    options: {
+        circumference: 180,
+        rotation: 270,
+        cutout: '72%',
+        plugins: { tooltip: { enabled: false }, legend: { display: false } },
+        animation: { duration: 800, easing: 'easeInOutQuart' }
+    }
+});
+
+function animateCaseRiskScore(newScore) {
+    const clamped  = Math.min(99, Math.max(0, newScore));
+    const scoreEl  = document.getElementById('caseRiskScoreVal');
+    const start    = caseRiskScore;
+    const diff     = clamped - start;
+    const t0       = performance.now();
+
+    function step(now) {
+        const p   = Math.min((now - t0) / 800, 1);
+        const e   = 1 - Math.pow(1 - p, 3);
+        const val = Math.round(start + diff * e);
+        if (scoreEl) scoreEl.textContent = val;
+        const color = val >= 80 ? '#dc2626' : val >= 60 ? '#f97316' : '#fbbf24';
+        caseGauge.data.datasets[0].data = [val, 100 - val];
+        caseGauge.data.datasets[0].backgroundColor[0] = color;
+        caseGauge.update('none');
+        if (p < 1) requestAnimationFrame(step);
+        else caseRiskScore = clamped;
+    }
+    requestAnimationFrame(step);
+}
+
+// ── 2. 버튼 액션 ─────────────────────────────────────────────────────
+async function assignToMe() {
+    const confirmed = confirm(`[${CASE_ID}] 케이스를 본인(${CURRENT_OP})에게 할당하시겠습니까?`);
+    if (!confirmed) return;
+    await caseApiCall('assign', { operator: CURRENT_OP });
+    showToast('✅ 담당자로 지정되었습니다.', 'success');
+    updateCaseMeta('Assignee', CURRENT_OP);
+    updateCaseMeta('Status', 'INVESTIGATING');
+}
+
+async function escalateCase() {
+    if (!confirm(`[${CASE_ID}] 시니어 애널리스트에게 에스컬레이션하시겠습니까?`)) return;
+    await caseApiCall('escalate', { operator: CURRENT_OP });
+    showToast('⬆️ 에스컬레이션 완료.', 'warning');
+    updateCaseMeta('Status', 'ESCALATED');
+    animateCaseRiskScore(Math.min(caseRiskScore + 5, 99));
+}
+
+async function resolveCase() {
+    if (!confirm(`[${CASE_ID}] 케이스를 종결하시겠습니까? 조사가 완료된 경우에만 진행하세요.`)) return;
+    await caseApiCall('resolve', { operator: CURRENT_OP });
+    showToast('✔️ 케이스가 종결되었습니다.', 'success');
+    updateCaseMeta('Status', 'RESOLVED');
+    animateCaseRiskScore(Math.max(caseRiskScore - 20, 0));
+}
+
+function updateStatus() {
+    const status = prompt('새 상태를 입력하세요 (INVESTIGATING / ESCALATED / PENDING / RESOLVED):');
+    if (!status) return;
+    caseApiCall('comment', { operator: CURRENT_OP, content: `Status manually updated to: ${status}` });
+    updateCaseMeta('Status', status.toUpperCase());
+    showToast('📝 상태가 업데이트되었습니다.', 'info');
+}
+
+function addToWatchlist() {
+    caseApiCall('comment', { operator: CURRENT_OP, content: 'Wallet address added to monitoring watchlist.' });
+    showToast('👁️ 감시 목록에 추가되었습니다.', 'info');
+}
+
+// ── 3. API 호출 헬퍼 ─────────────────────────────────────────────────
+async function caseApiCall(endpoint, body) {
+    try {
+        const res = await fetch(`/api/case/${CASE_ID}/${endpoint}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        if (!res.ok) console.error(`API 오류: ${endpoint}`, await res.text());
+        return res;
+    } catch (err) {
+        console.error(`API 호출 실패: ${endpoint}`, err);
+    }
+}
+
+// ── 4. WebSocket 연결 ─────────────────────────────────────────────────
+var socket      = new SockJS('/ws-roc', null, { transports: ['websocket'] });
+var stompClient = Stomp.over(socket);
+stompClient.debug = null;
+
+stompClient.connect({}, function(frame) {
+    console.log('🔗 케이스 상세 WebSocket 연결됨: ' + CASE_ID);
+
+    // 이 케이스의 타임라인 업데이트 구독 (다른 운영자 포함)
+    stompClient.subscribe('/topic/timeline/' + CASE_ID, function(msg) {
+        const event = JSON.parse(msg.body);
+        addTimelineItem(event);
+        // 코멘트(Investigation Note)면 코멘트 섹션에도 표시
+        if (event.action === 'Investigation Note') {
+            addCommentItem(event);
+        }
+    });
+});
+
+// ── 5. 타임라인 아이템 추가 (DOM) ───────────────────────────────────
+function addTimelineItem(event) {
+    const container = document.querySelector('.timeline');
+    if (!container) return;
+
+    const actionIcons = {
+        'Case Assigned':      '👤',
+        'Case Escalated':     '⬆️',
+        'Case Resolved':      '✅',
+        'Investigation Note': '📝',
+        'default':            '⚡'
+    };
+    const icon = actionIcons[event.action] || actionIcons['default'];
+
+    const html = `
+        <div class="timeline-item" style="animation:timelineSlideIn 0.4s ease-out;">
+            <div class="timeline-icon" style="background:#1e3a5f;border-color:#2563eb;">${icon}</div>
+            <div class="timeline-content">
+                <div class="timeline-header">
+                    <span class="timeline-operator" style="color:#60a5fa;">${event.operatorName}</span>
+                    <span class="text-muted">•</span>
+                    <span class="text-muted">Just Now</span>
+                    <span style="background:rgba(37,99,235,0.15);color:#60a5fa;padding:1px 6px;
+                                 border-radius:3px;font-size:10px;margin-left:4px;">${event.action}</span>
+                </div>
+                <p class="timeline-description">${event.comment || event.action}</p>
+            </div>
+        </div>`;
+    container.insertAdjacentHTML('afterbegin', html);
+}
+
+// ── 6. 코멘트 섹션 실시간 추가 ──────────────────────────────────────
+function addCommentItem(event) {
+    const list = document.querySelector('.comments-list');
+    if (!list) return;
+    const initial = event.operatorName ? event.operatorName.charAt(event.operatorName.length - 1) : '?';
+    const html = `
+        <div class="comment-item" style="animation:timelineSlideIn 0.4s ease-out;border-color:#2563eb;">
+            <div class="comment-header">
+                <div class="comment-avatar">${initial}</div>
+                <span class="comment-operator" style="color:#60a5fa;">${event.operatorName}</span>
+                <span class="text-muted">•</span>
+                <span class="text-muted">Just Now</span>
+            </div>
+            <p class="comment-content">${event.comment}</p>
+        </div>`;
+    list.insertAdjacentHTML('afterbegin', html);
+}
+
+// ── 7. 케이스 메타데이터 DOM 업데이트 ───────────────────────────────
+function updateCaseMeta(label, value) {
+    const metaItems = document.querySelectorAll('.meta-item');
+    metaItems.forEach(item => {
+        const labelEl = item.querySelector('.data-label');
+        const valueEl = item.querySelector('.data-value');
+        if (labelEl && labelEl.textContent.trim() === label && valueEl) {
+            valueEl.textContent = value;
+            valueEl.style.animation = 'none';
+            valueEl.offsetHeight; // reflow
+            valueEl.style.animation = 'flashUpdate 0.5s ease-out';
+        }
+    });
+}
+
+// ── 8. 코멘트 폼 비동기 처리 ────────────────────────────────────────
+document.querySelector('.comment-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const input   = this.querySelector('.comment-input');
+    const content = input.value.trim();
+    if (!content) return;
+
+    const btn = this.querySelector('button[type="submit"]');
+    btn.disabled = true;
+    btn.textContent = '전송 중...';
+
+    try {
+        const res = await caseApiCall('comment', { operator: CURRENT_OP, content });
+        if (res && res.ok) {
+            input.value = '';
+            // WebSocket 브로드캐스트로 자동 렌더링되므로 여기선 입력 초기화만
+        }
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<svg class="svg-icon" viewBox="0 0 24 24" style="width:14px;height:14px;">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg> Add Note`;
+    }
+});
+
+// ── 9. Toast 알림 ─────────────────────────────────────────────────────
+function showToast(message, type) {
+    const colors = { success: '#10b981', warning: '#f97316', info: '#2563eb', error: '#dc2626' };
+    const toast  = document.createElement('div');
+    toast.style.cssText = `
+        position:fixed;bottom:24px;right:24px;z-index:9999;
+        background:${colors[type] || '#374151'};color:white;
+        padding:12px 20px;border-radius:8px;font-size:13px;font-weight:600;
+        font-family:'Monaco','Courier New',monospace;
+        animation:toastIn 0.3s ease-out;box-shadow:0 4px 20px rgba(0,0,0,0.4);`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+        toast.style.animation = 'toastOut 0.3s ease-in forwards';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+
+</script>
+<style>
+@keyframes timelineSlideIn {
+    from { opacity: 0; transform: translateX(-12px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes flashUpdate {
+    0%   { background: rgba(37,99,235,0.3); border-radius: 3px; }
+    100% { background: transparent; }
+}
+@keyframes toastIn {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes toastOut {
+    from { opacity: 1; transform: translateY(0); }
+    to   { opacity: 0; transform: translateY(16px); }
+}
+</style>
+</body>
+</html>

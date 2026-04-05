@@ -1,0 +1,1517 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WHALE ALERT — Web3 Threat Intelligence</title>
+<script src="https://cdn.jsdelivr.net/npm/sockjs-client@1.6.1/dist/sockjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+/* ─── RESET & CSS VARS ─────────────────────────────────────────────── */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+    --bg-void:      #020608;
+    --bg-panel:     #060d12;
+    --bg-card:      #0a1520;
+    --border:       rgba(0, 200, 120, 0.12);
+    --border-glow:  rgba(0, 200, 120, 0.35);
+    --green:        #00e887;
+    --green-dim:    rgba(0, 232, 135, 0.15);
+    --blue:         #0ea5e9;
+    --blue-dim:     rgba(14, 165, 233, 0.15);
+    --red:          #ff3b3b;
+    --red-dim:      rgba(255, 59, 59, 0.15);
+    --orange:       #ff8c00;
+    --orange-dim:   rgba(255, 140, 0, 0.15);
+    --purple:       #a855f7;
+    --purple-dim:   rgba(168, 85, 247, 0.15);
+    --text-1:       #e8f4f0;
+    --text-2:       #8fa8a0;
+    --text-3:       #445850;
+    --font-mono:    'Monaco', 'Cascadia Code', 'Fira Code', 'Courier New', monospace;
+}
+
+html, body { height: 100%; overflow: hidden; background: var(--bg-void); }
+
+body {
+    font-family: var(--font-mono);
+    color: var(--text-1);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+/* ─── SCANLINE OVERLAY ─────────────────────────────────────────────── */
+body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(0deg,
+        transparent, transparent 2px,
+        rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+    pointer-events: none; z-index: 9999;
+}
+
+/* ─── LAYOUT ───────────────────────────────────────────────────────── */
+.app-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* ─── TOP BAR ──────────────────────────────────────────────────────── */
+.top-bar {
+    height: 52px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 24px;
+    flex-shrink: 0;
+    position: relative;
+}
+
+.top-bar::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--green), transparent);
+    animation: topline 4s ease-in-out infinite;
+}
+@keyframes topline {
+    0%,100% { opacity: 0.3; } 50% { opacity: 1; }
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.brand-icon {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, var(--green-dim), var(--blue-dim));
+    border: 1px solid var(--border-glow);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+}
+.brand-name {
+    font-size: 15px; font-weight: 700;
+    letter-spacing: 3px;
+    background: linear-gradient(90deg, var(--green), var(--blue));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.brand-sub {
+    font-size: 9px; color: var(--text-3);
+    letter-spacing: 2px; text-transform: uppercase;
+}
+
+.top-bar-stats {
+    display: flex; gap: 8px; flex: 1;
+}
+.stat-chip {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 12px;
+    display: flex; flex-direction: column; align-items: center;
+    min-width: 100px;
+}
+.stat-chip .label { font-size: 9px; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; }
+.stat-chip .value { font-size: 13px; font-weight: 700; }
+.stat-chip.eth .value  { color: #627eea; }
+.stat-chip.btc .value  { color: #f7931a; }
+.stat-chip.alert .value { color: var(--red); }
+.stat-chip.node .value  { color: var(--green); }
+
+.top-bar-right {
+    display: flex; align-items: center; gap: 16px;
+}
+
+.live-indicator {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 10px; font-weight: 700; letter-spacing: 2px;
+    color: var(--green);
+}
+.live-dot {
+    width: 8px; height: 8px;
+    background: var(--green);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--green);
+    animation: pulse-dot 1.5s infinite;
+}
+@keyframes pulse-dot {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50%      { opacity: 0.6; transform: scale(0.85); }
+}
+
+#liveClock {
+    font-size: 13px; font-weight: 600;
+    color: var(--text-2);
+    letter-spacing: 1px;
+    font-variant-numeric: tabular-nums;
+}
+
+.operator-chip {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 10px; color: var(--text-2);
+    letter-spacing: 1px;
+}
+
+/* ─── MAIN LAYOUT ──────────────────────────────────────────────────── */
+.main-layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* ─── LEFT: WHALE FEED ─────────────────────────────────────────────── */
+.feed-panel {
+    width: 340px;
+    flex-shrink: 0;
+    background: var(--bg-panel);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+}
+
+.panel-header {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    flex-shrink: 0;
+}
+.panel-title {
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 2px; color: var(--text-2);
+    text-transform: uppercase;
+}
+.panel-badge {
+    background: var(--red-dim);
+    border: 1px solid var(--red);
+    color: var(--red);
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-size: 9px; font-weight: 700;
+}
+
+.feed-list {
+    flex: 1; overflow-y: auto;
+    padding: 8px;
+}
+.feed-list::-webkit-scrollbar { width: 3px; }
+.feed-list::-webkit-scrollbar-thumb { background: var(--border-glow); border-radius: 2px; }
+
+/* ─── WHALE FEED CARD ──────────────────────────────────────────────── */
+.whale-card {
+    background: var(--bg-card);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    border-left: 3px solid;
+    position: relative;
+    animation: cardIn 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.whale-card:hover { background: #0d1e2c; }
+@keyframes cardIn {
+    from { opacity: 0; transform: translateX(-20px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+.whale-card.critical { border-color: var(--red); }
+.whale-card.high     { border-color: var(--orange); }
+.whale-card.medium   { border-color: #fbbf24; }
+.whale-card.info     { border-color: var(--green); }
+
+.whale-card-top {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    margin-bottom: 6px;
+}
+.whale-amount {
+    font-size: 16px; font-weight: 800;
+    letter-spacing: -0.5px;
+}
+.whale-card.critical .whale-amount { color: var(--red); text-shadow: 0 0 12px rgba(255,59,59,0.5); }
+.whale-card.high     .whale-amount { color: var(--orange); text-shadow: 0 0 12px rgba(255,140,0,0.5); }
+.whale-card.medium   .whale-amount { color: #fbbf24; }
+.whale-card.info     .whale-amount { color: var(--green); text-shadow: 0 0 12px rgba(0,232,135,0.4); }
+
+.whale-card-meta {
+    display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
+}
+.risk-badge {
+    font-size: 9px; font-weight: 700; letter-spacing: 1px;
+    padding: 2px 6px; border-radius: 3px;
+}
+.risk-badge.critical { background: var(--red-dim); color: var(--red); border: 1px solid var(--red); }
+.risk-badge.high     { background: var(--orange-dim); color: var(--orange); border: 1px solid var(--orange); }
+.risk-badge.medium   { background: rgba(251,191,36,0.15); color: #fbbf24; border: 1px solid #fbbf24; }
+.risk-badge.info     { background: var(--green-dim); color: var(--green); border: 1px solid var(--green); }
+
+.whale-time { font-size: 9px; color: var(--text-3); }
+
+.whale-flow {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 10px; margin-bottom: 6px;
+}
+.addr { font-size: 10px; color: var(--text-2); font-family: var(--font-mono); }
+.arrow { color: var(--text-3); font-size: 10px; }
+
+.label-pills {
+    display: flex; gap: 4px; flex-wrap: wrap;
+}
+.label-pill {
+    font-size: 9px; padding: 1px 6px; border-radius: 3px; font-weight: 600;
+}
+.label-pill.exchange { background: var(--blue-dim); color: var(--blue); border: 1px solid rgba(14,165,233,0.3); }
+.label-pill.hacker   { background: var(--red-dim);  color: var(--red);  border: 1px solid rgba(255,59,59,0.3); }
+.label-pill.coldwallet { background: var(--purple-dim); color: var(--purple); border: 1px solid rgba(168,85,247,0.3); }
+.label-pill.defi     { background: var(--green-dim); color: var(--green); border: 1px solid rgba(0,232,135,0.3); }
+.label-pill.whale    { background: rgba(251,191,36,0.15); color: #fbbf24; border: 1px solid rgba(251,191,36,0.3); }
+.label-pill.unknown  { background: rgba(100,116,139,0.15); color: #64748b; border: 1px solid rgba(100,116,139,0.3); }
+.label-pill.identified { background: rgba(100,116,139,0.12); color: #94a3b8; border: 1px solid rgba(100,116,139,0.25); }
+.label-pill.chain-eth { background: rgba(98,126,234,0.15); color: #627eea; border: 1px solid rgba(98,126,234,0.3); }
+.label-pill.chain-btc { background: rgba(247,147,26,0.15); color: #f7931a; border: 1px solid rgba(247,147,26,0.3); }
+
+.usd-val { font-size: 9px; color: var(--text-3); margin-top: 4px; text-align: right; }
+
+/* ─── CENTER: MAP PANEL ────────────────────────────────────────────── */
+.map-panel {
+    flex: 1;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    position: relative;
+}
+
+.map-container {
+    flex: 1;
+    position: relative;
+    background: #020a0e;
+    overflow: hidden;
+    min-height: 0;
+}
+
+#threatMap {
+    width: 100%; height: 100%;
+    display: block;
+}
+
+/* Map overlay labels */
+.hub-label {
+    position: absolute;
+    font-size: 9px; font-weight: 700;
+    color: var(--text-2);
+    letter-spacing: 1px;
+    pointer-events: none;
+    text-shadow: 0 0 8px rgba(0,0,0,0.9), 0 0 4px rgba(0,0,0,1);
+    transform: translate(-50%, -100%);
+    margin-top: -6px;
+    white-space: nowrap;
+}
+
+/* Map corner info */
+.map-corner {
+    position: absolute;
+    font-size: 9px; color: var(--text-3);
+    letter-spacing: 1px; text-transform: uppercase;
+}
+.map-corner.tl { top: 12px; left: 14px; }
+.map-corner.tr { top: 12px; right: 14px; }
+.map-corner.bl { bottom: 12px; left: 14px; }
+.map-corner.br { bottom: 12px; right: 14px; color: var(--green); }
+
+/* Threat alert flash overlay */
+.threat-flash {
+    position: absolute; inset: 0;
+    border: 2px solid var(--red);
+    border-radius: 0;
+    pointer-events: none;
+    opacity: 0;
+    box-shadow: inset 0 0 60px rgba(255,59,59,0.15);
+}
+.threat-flash.active {
+    animation: flashBorder 0.8s ease-out;
+}
+@keyframes flashBorder {
+    0%   { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+/* ─── BOTTOM STATS BAR ─────────────────────────────────────────────── */
+.bottom-bar {
+    height: 42px;
+    background: var(--bg-panel);
+    border-top: 1px solid var(--border);
+    display: flex; align-items: center;
+    padding: 0 16px; gap: 24px;
+    flex-shrink: 0;
+}
+
+.bottom-stat {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px;
+}
+.bottom-stat .key  { color: var(--text-3); }
+.bottom-stat .val  { font-weight: 700; }
+.bottom-stat.green .val { color: var(--green); }
+.bottom-stat.red   .val { color: var(--red); }
+.bottom-stat.blue  .val { color: var(--blue); }
+.bottom-stat.eth   .val { color: #627eea; }
+.bottom-stat.btc   .val { color: #f7931a; }
+
+.separator { color: var(--text-3); }
+
+/* ─── RIGHT: TOOLS PANEL ────────────────────────────────────────────── */
+.tools-panel {
+    width: 280px;
+    flex-shrink: 0;
+    background: var(--bg-panel);
+    border-left: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    overflow-y: auto;
+}
+.tools-panel::-webkit-scrollbar { width: 3px; }
+.tools-panel::-webkit-scrollbar-thumb { background: var(--border-glow); }
+
+.tool-section {
+    border-bottom: 1px solid var(--border);
+    padding: 12px;
+}
+.tool-section-title {
+    font-size: 9px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 2px;
+    color: var(--text-3); margin-bottom: 10px;
+}
+
+/* Address Lookup */
+.lookup-input {
+    width: 100%;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 11px; color: var(--text-1);
+    font-family: var(--font-mono);
+    outline: none;
+    transition: border-color 0.2s;
+}
+.lookup-input:focus { border-color: var(--border-glow); }
+.lookup-input::placeholder { color: var(--text-3); }
+
+.lookup-chain-row {
+    display: flex; gap: 6px; margin: 8px 0;
+}
+.chain-btn {
+    flex: 1;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 5px;
+    font-size: 10px; font-weight: 700;
+    color: var(--text-2); font-family: var(--font-mono);
+    cursor: pointer; transition: all 0.2s;
+}
+.chain-btn.active.eth { border-color: #627eea; color: #627eea; background: rgba(98,126,234,0.1); }
+.chain-btn.active.btc { border-color: #f7931a; color: #f7931a; background: rgba(247,147,26,0.1); }
+.chain-btn:hover      { border-color: var(--border-glow); }
+
+.lookup-btn {
+    width: 100%;
+    background: linear-gradient(90deg, rgba(0,232,135,0.15), rgba(14,165,233,0.15));
+    border: 1px solid var(--border-glow);
+    border-radius: 6px;
+    padding: 8px;
+    font-size: 11px; font-weight: 700;
+    color: var(--green); font-family: var(--font-mono);
+    cursor: pointer; transition: all 0.2s;
+    letter-spacing: 1px;
+}
+.lookup-btn:hover { background: linear-gradient(90deg, var(--green-dim), var(--blue-dim)); }
+
+.lookup-result {
+    margin-top: 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px;
+    font-size: 11px;
+    display: none;
+}
+.lookup-result.show { display: block; animation: fadeIn 0.3s; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+.lr-addr { font-size: 10px; color: var(--text-3); word-break: break-all; margin-bottom: 8px; }
+.lr-label { font-size: 16px; font-weight: 700; color: var(--text-1); margin-bottom: 4px; }
+.lr-type  { font-size: 10px; margin-bottom: 8px; }
+.lr-risk  { font-size: 10px; }
+
+/* Volume Chart */
+.mini-chart-wrap {
+    height: 90px;
+    position: relative;
+}
+
+/* Chain Stats */
+.chain-stat-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.chain-stat-row:last-child { border-bottom: none; }
+.chain-name { font-size: 11px; font-weight: 600; }
+.chain-vol  { font-size: 11px; color: var(--text-2); }
+
+/* Threat Level Meter */
+.threat-meter {
+    height: 8px;
+    background: var(--bg-card);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 6px;
+}
+.threat-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Recent Activity Heatmap */
+.activity-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 2px;
+    margin-top: 4px;
+}
+.activity-cell {
+    height: 14px;
+    border-radius: 2px;
+    background: var(--bg-card);
+    transition: background 0.3s;
+}
+.activity-cell.l1 { background: rgba(0,232,135,0.2); }
+.activity-cell.l2 { background: rgba(0,232,135,0.4); }
+.activity-cell.l3 { background: rgba(0,232,135,0.7); }
+.activity-cell.l4 { background: var(--green); box-shadow: 0 0 4px var(--green); }
+
+/* Pulse number display */
+.big-num {
+    font-size: 28px; font-weight: 800;
+    letter-spacing: -1px;
+}
+.big-num.green  { color: var(--green); text-shadow: 0 0 20px rgba(0,232,135,0.3); }
+.big-num.red    { color: var(--red);   text-shadow: 0 0 20px rgba(255,59,59,0.3); }
+.big-num.orange { color: var(--orange); }
+
+/* Scrolling ticker */
+.ticker-wrap {
+    overflow: hidden; height: 22px;
+}
+.ticker-inner {
+    display: flex; gap: 32px;
+    animation: tickerScroll 30s linear infinite;
+    white-space: nowrap;
+}
+@keyframes tickerScroll {
+    0%   { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+}
+.ticker-item { font-size: 10px; color: var(--text-2); }
+.ticker-item .t-up   { color: var(--green); }
+.ticker-item .t-down { color: var(--red); }
+
+/* Toast */
+.toast-container {
+    position: fixed; bottom: 20px; right: 300px;
+    z-index: 9000; display: flex; flex-direction: column-reverse; gap: 8px;
+}
+.toast {
+    background: var(--bg-card);
+    border: 1px solid var(--border-glow);
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 11px; color: var(--text-1);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.6);
+    animation: toastIn 0.35s cubic-bezier(0.22,1,0.36,1);
+    max-width: 320px;
+}
+.toast.critical { border-color: var(--red); box-shadow: 0 4px 24px rgba(255,59,59,0.3); }
+@keyframes toastIn {
+    from { opacity: 0; transform: translateX(20px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+</style>
+</head>
+<body>
+<div class="app-shell">
+
+    <!-- ── TOP BAR ───────────────────────────────────────────────────── -->
+    <header class="top-bar">
+        <div class="brand">
+            <div class="brand-icon">🐋</div>
+            <div>
+                <div class="brand-name">WHALE ALERT</div>
+                <div class="brand-sub">Web3 Threat Intelligence Platform</div>
+            </div>
+        </div>
+
+        <div class="top-bar-stats">
+            <div class="stat-chip eth">
+                <span class="label">ETH 24h Volume</span>
+                <span class="value" id="statEthVol" th:text="${eth24hVolume + ' ETH'}">0 ETH</span>
+            </div>
+            <div class="stat-chip alert">
+                <span class="label">CRITICAL</span>
+                <span class="value" id="statCritical" th:text="${criticalCount}">0</span>
+            </div>
+            <div class="stat-chip node">
+                <span class="label">NODES</span>
+                <span class="value" id="statNodes">247</span>
+            </div>
+            <div class="stat-chip" style="min-width:130px;">
+                <span class="label">THREAT LEVEL</span>
+                <span class="value" id="statThreat" style="color:#ff8c00;">HIGH</span>
+            </div>
+        </div>
+
+        <div class="top-bar-right">
+            <a href="/dashboard" style="
+                    display:flex; align-items:center; gap:5px;
+                    padding:5px 12px; border-radius:6px;
+                    background:rgba(14,165,233,0.08);
+                    border:1px solid rgba(14,165,233,0.35);
+                    color:#0ea5e9; font-size:11px; font-weight:700;
+                    text-decoration:none; letter-spacing:0.5px;
+                    transition:background 0.2s;"
+                onmouseover="this.style.background='rgba(14,165,233,0.18)'"
+                onmouseout="this.style.background='rgba(14,165,233,0.08)'">
+                ← ROC Dashboard
+            </a>
+            <div class="live-indicator">
+                <div class="live-dot"></div>
+                LIVE
+            </div>
+            <div id="liveClock">00:00:00</div>
+            <div class="operator-chip">⬡ QuickNode · ngrok:8095</div>
+        </div>
+    </header>
+
+    <!-- ── TICKER ────────────────────────────────────────────────────── -->
+    <div style="height:22px; background:var(--bg-void); border-bottom:1px solid var(--border); overflow:hidden; padding:0 8px;">
+        <div class="ticker-wrap">
+            <div class="ticker-inner" id="tickerInner">
+                <span class="ticker-item">ETH <span class="t-up">$2,384.50 ▲1.2%</span></span>
+                <span class="ticker-item">BTC <span class="t-up">$63,200 ▲0.8%</span></span>
+                <span class="ticker-item">WHALE ALERT: 1,250 ETH → Binance Hot Wallet | 2m ago</span>
+                <span class="ticker-item">BTC MOVEMENT: 150 BTC from Unknown | 5m ago</span>
+                <span class="ticker-item">ETH <span class="t-up">$2,384.50 ▲1.2%</span></span>
+                <span class="ticker-item">BTC <span class="t-up">$63,200 ▲0.8%</span></span>
+                <span class="ticker-item">WHALE ALERT: 1,250 ETH → Binance Hot Wallet | 2m ago</span>
+                <span class="ticker-item">BTC MOVEMENT: 150 BTC from Unknown | 5m ago</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── MAIN LAYOUT ────────────────────────────────────────────────── -->
+    <div class="main-layout">
+
+        <!-- ────────────────── LEFT: WHALE FEED ─────────────────────── -->
+        <aside class="feed-panel">
+            <div class="panel-header">
+                <span class="panel-title">Real-Time Whale Feed</span>
+                <span class="panel-badge live" id="feedCount">0 ALERTS</span>
+            </div>
+            <div class="feed-list" id="whaleFeed">
+                <!-- DB 초기 데이터 (Thymeleaf) -->
+                <div th:each="w : ${recentWhales}" class="whale-card"
+                     th:classappend="${#strings.toLowerCase(w.riskLevel)}">
+                    <div class="whale-card-top">
+                        <div class="whale-amount" th:text="${w.formattedAmount}">1,250 ETH</div>
+                        <div class="whale-card-meta">
+                            <span class="risk-badge" th:classappend="${#strings.toLowerCase(w.riskLevel)}"
+                                  th:text="${w.riskLevel}">HIGH</span>
+                            <span class="whale-time" th:text="${w.timeAgo}">2m ago</span>
+                        </div>
+                    </div>
+                    <div class="whale-flow">
+                        <span class="addr" th:text="${w.fromAddress != null ? #strings.substring(w.fromAddress,0,8)+'...' : 'unknown'}">0x742d...</span>
+                        <span class="arrow">→</span>
+                        <span class="addr" th:text="${w.toAddress != null ? #strings.substring(w.toAddress,0,8)+'...' : 'unknown'}">0x28C6...</span>
+                    </div>
+                    <div class="label-pills">
+                        <span class="label-pill"
+                              th:classappend="${w.chainName == 'Bitcoin'} ? 'chain-btc' : 'chain-eth'"
+                              th:text="${w.assetSymbol}">ETH</span>
+                        <span class="label-pill"
+                              th:if="${w.fromLabel != null and w.fromLabel != 'Unknown'}"
+                              th:classappend="${#strings.toLowerCase(w.fromLabelType)}"
+                              th:text="${w.fromLabel}">Binance</span>
+                        <span class="label-pill"
+                              th:if="${w.toLabel != null and w.toLabel != 'Unknown'}"
+                              th:classappend="${#strings.toLowerCase(w.toLabelType)}"
+                              th:text="${w.toLabel}">Exchange</span>
+                    </div>
+                    <div class="usd-val" th:if="${w.amountUsd != null}"
+                         th:text="'≈ $' + ${#numbers.formatDecimal(w.amountUsd,1,'COMMA',0,'POINT')}">≈ $2.4M</div>
+                </div>
+
+                <!-- 데이터 없을 때 -->
+                <div th:if="${#lists.isEmpty(recentWhales)}"
+                     style="padding:24px; text-align:center; color:var(--text-3); font-size:11px;">
+                    <div style="font-size:24px; margin-bottom:8px;">🐋</div>
+                    Waiting for whale movements...<br>
+                    <span style="font-size:9px;">QuickNode stream active</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ────────────────── CENTER: WORLD MAP ─────────────────────── -->
+        <main class="map-panel">
+            <div class="map-container">
+                <canvas id="threatMap"></canvas>
+                <div class="threat-flash" id="threatFlash"></div>
+
+                <!-- 코너 레이블 -->
+                <div class="map-corner tl">GLOBAL THREAT MAP</div>
+                <div class="map-corner tr" id="mapStatus">● ETH MAINNET ACTIVE</div>
+                <div class="map-corner bl" id="lastEventLabel">Last event: --</div>
+                <div class="map-corner br" id="mapFlowCount">0 flows tracked</div>
+
+                <!-- 허브 레이블 (JS로 위치 지정) -->
+                <div id="hubLabels"></div>
+            </div>
+
+            <div class="bottom-bar">
+                <div class="bottom-stat green">
+                    <span class="key">ACTIVE FLOWS</span>
+                    <span class="val" id="barFlows">0</span>
+                </div>
+                <span class="separator">|</span>
+                <div class="bottom-stat eth">
+                    <span class="key">ETH VOLUME</span>
+                    <span class="val" id="barEthVol">0 ETH</span>
+                </div>
+                <span class="separator">|</span>
+                <div class="bottom-stat red">
+                    <span class="key">CRITICAL ALERTS</span>
+                    <span class="val" id="barCritical">0</span>
+                </div>
+                <span class="separator">|</span>
+                <div class="bottom-stat blue">
+                    <span class="key">QUICKNODE STREAM</span>
+                    <span class="val" id="barStream">CONNECTED</span>
+                </div>
+            </div>
+        </main>
+
+        <!-- ────────────────── RIGHT: TOOLS ──────────────────────────── -->
+        <aside class="tools-panel">
+
+            <!-- Address Lookup -->
+            <div class="tool-section">
+                <div class="tool-section-title">⬡ Address Intel Lookup</div>
+                <input class="lookup-input" id="lookupAddr" type="text"
+                       placeholder="0x... or Bitcoin address">
+                <div class="lookup-chain-row">
+                    <button class="chain-btn eth active" id="btnEth" onclick="selectChain('eth')">ETH</button>
+                    <button class="chain-btn btc" id="btnBtc" onclick="selectChain('btc')">BTC</button>
+                </div>
+                <button class="lookup-btn" onclick="performLookup()">⬡ SCAN ADDRESS</button>
+                <div class="lookup-result" id="lookupResult">
+                    <div class="lr-addr" id="lrAddr">—</div>
+                    <div class="lr-label" id="lrLabel">Unknown</div>
+                    <div class="lr-type" id="lrType"></div>
+                    <div class="lr-risk" id="lrRisk"></div>
+                </div>
+                <div id="lookupSpinner" style="display:none;text-align:center;padding:8px;font-size:10px;color:var(--text-3);">
+                    Scanning OKLink...
+                </div>
+            </div>
+
+            <!-- Threat Level -->
+            <div class="tool-section">
+                <div class="tool-section-title">⬡ Global Threat Level</div>
+                <div style="display:flex; align-items:baseline; gap:8px; margin-bottom:6px;">
+                    <div class="big-num orange" id="threatPct">72</div>
+                    <div style="font-size:10px;color:var(--text-3);">/ 100</div>
+                </div>
+                <div class="threat-meter">
+                    <div class="threat-fill" id="threatFill"
+                         style="width:72%;background:linear-gradient(90deg,#ff8c00,#ff3b3b);"></div>
+                </div>
+                <div style="margin-top:8px;font-size:10px;color:var(--text-3);">
+                    Based on ETH/BTC flow anomaly detection
+                </div>
+            </div>
+
+            <!-- Volume Chart -->
+            <div class="tool-section">
+                <div class="tool-section-title">⬡ 24H Whale Volume</div>
+                <div class="mini-chart-wrap">
+                    <canvas id="volumeChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Activity Heatmap -->
+            <div class="tool-section">
+                <div class="tool-section-title">⬡ Activity Heatmap (12h)</div>
+                <div class="activity-grid" id="activityGrid">
+                    <!-- 12 cells generated by JS -->
+                </div>
+                <div style="margin-top:6px;font-size:9px;color:var(--text-3);">
+                    Each block = 1 hour | Darker = more whale activity
+                </div>
+            </div>
+
+            <!-- Chain Stats -->
+            <div class="tool-section">
+                <div class="tool-section-title">⬡ Chain Statistics</div>
+                <div class="chain-stat-row">
+                    <span class="chain-name" style="color:#627eea;">⬡ Ethereum</span>
+                    <span class="chain-vol" id="ethStats">—</span>
+                </div>
+                <div class="chain-stat-row">
+                    <span class="chain-name" style="color:#f7931a;">⬡ Bitcoin</span>
+                    <span class="chain-vol" id="btcStats">—</span>
+                </div>
+                <div class="chain-stat-row">
+                    <span class="chain-name" style="color:var(--text-2);">Total Alerts</span>
+                    <span class="chain-vol" id="totalAlerts">0</span>
+                </div>
+                <div class="chain-stat-row">
+                    <span class="chain-name" style="color:var(--text-2);">CRITICAL</span>
+                    <span class="chain-vol" id="criticalStat" style="color:var(--red);">0</span>
+                </div>
+            </div>
+
+            <!-- Node Health -->
+            <div class="tool-section">
+                <div class="tool-section-title">⬡ System Health</div>
+                <div class="chain-stat-row">
+                    <span class="chain-name">QuickNode RPC</span>
+                    <span style="color:var(--green);font-size:10px;">● ONLINE</span>
+                </div>
+                <div class="chain-stat-row">
+                    <span class="chain-name">WebSocket</span>
+                    <span style="color:var(--green);font-size:10px;" id="wsStatus">● CONNECTED</span>
+                </div>
+                <div class="chain-stat-row">
+                    <span class="chain-name">OKLink API</span>
+                    <span style="color:var(--green);font-size:10px;">● ACTIVE</span>
+                </div>
+                <div class="chain-stat-row">
+                    <span class="chain-name">ngrok Tunnel</span>
+                    <span style="color:var(--green);font-size:10px;">● :8095</span>
+                </div>
+            </div>
+
+        </aside>
+    </div><!-- .main-layout -->
+</div><!-- .app-shell -->
+
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- ═══════════════════════ JAVASCRIPT ════════════════════════════════ -->
+<!-- 서버 데이터를 data-* 속성으로 전달 -->
+<div id="roc-whale-data"
+     th:attr="data-critical=${criticalCount}"
+     style="display:none"></div>
+
+<script>
+'use strict';
+
+// ── 전역 상태 ──────────────────────────────────────────────────────────
+const State = {
+    feedCount: 0,
+    ethVolume: 0,
+    btcVolume: 0,
+    criticalCount: parseInt(document.getElementById('roc-whale-data').getAttribute('data-critical')) || 0,
+    totalAlerts: 0,
+    activeFlows: 0,
+    threatLevel: 72,
+    selectedChain: 'eth',
+    flows: [],            // 현재 애니메이션 중인 flows
+    demoMode: true,       // QuickNode 미연결 시 데모 데이터 사용
+};
+
+// ── 세계 금융 허브 위치 (Canvas 900×450 기준 px) ───────────────────────
+// 대략적 Mercator 투영: x=(lon+180)/360*W, y=(90-lat)/180*H
+const HUBS = [
+    { id:'SFO', name:'San Francisco', x:0.11, y:0.34, region:'AMERICAS' },
+    { id:'NYC', name:'New York',      x:0.20, y:0.33, region:'AMERICAS' },
+    { id:'SAO', name:'São Paulo',     x:0.25, y:0.73, region:'AMERICAS' },
+    { id:'LON', name:'London',        x:0.45, y:0.24, region:'EMEA'    },
+    { id:'ZRH', name:'Zurich',        x:0.47, y:0.24, region:'EMEA'    },
+    { id:'DXB', name:'Dubai',         x:0.59, y:0.44, region:'EMEA'    },
+    { id:'MUM', name:'Mumbai',        x:0.63, y:0.50, region:'APAC'    },
+    { id:'SIN', name:'Singapore',     x:0.73, y:0.60, region:'APAC'    },
+    { id:'HKG', name:'Hong Kong',     x:0.77, y:0.45, region:'APAC'    },
+    { id:'TYO', name:'Tokyo',         x:0.83, y:0.36, region:'APAC'    },
+    { id:'SEO', name:'Seoul',         x:0.81, y:0.34, region:'APAC'    },
+    { id:'SYD', name:'Sydney',        x:0.84, y:0.75, region:'APAC'    },
+];
+
+// 간략화된 대륙 폴리곤 (x,y normalized 0-1)
+const CONTINENTS = [
+    // North America
+    [[.06,.10],[.16,.08],[.22,.13],[.26,.18],[.28,.30],[.24,.40],[.20,.52],[.16,.62],[.12,.58],[.06,.46],[.04,.28]],
+    // South America
+    [[.20,.56],[.26,.54],[.29,.58],[.30,.70],[.28,.84],[.24,.89],[.19,.84],[.17,.70],[.19,.62]],
+    // Europe
+    [[.39,.12],[.46,.10],[.52,.12],[.54,.18],[.56,.24],[.52,.28],[.44,.28],[.40,.22],[.38,.16]],
+    // Africa
+    [[.42,.28],[.52,.26],[.57,.30],[.58,.38],[.58,.52],[.55,.68],[.50,.80],[.44,.80],[.40,.68],[.38,.52],[.39,.36]],
+    // Asia
+    [[.52,.10],[.62,.08],[.72,.08],[.80,.10],[.90,.16],[.94,.24],[.92,.38],[.86,.46],[.80,.52],[.74,.56],[.68,.58],[.65,.55],[.62,.52],[.58,.48],[.55,.42],[.52,.32],[.50,.20]],
+    // Australia
+    [[.74,.65],[.82,.62],[.89,.66],[.90,.75],[.87,.82],[.80,.84],[.74,.78],[.73,.70]],
+    // Greenland
+    [[.30,.04],[.38,.02],[.43,.06],[.41,.12],[.34,.14],[.28,.10]],
+];
+
+// ── Canvas 초기화 ────────────────────────────────────────────────────
+const canvas  = document.getElementById('threatMap');
+const ctx     = canvas.getContext('2d');
+let W, H;
+
+function resizeCanvas() {
+    const container = canvas.parentElement;
+    W = canvas.width  = container.clientWidth;
+    H = canvas.height = container.clientHeight;
+    positionHubLabels();
+}
+
+window.addEventListener('resize', () => { resizeCanvas(); });
+resizeCanvas();
+
+// ── Hub Label Overlay ────────────────────────────────────────────────
+function positionHubLabels() {
+    const container = document.getElementById('hubLabels');
+    container.innerHTML = '';
+    HUBS.forEach(h => {
+        const el = document.createElement('div');
+        el.className = 'hub-label';
+        el.textContent = h.id;
+        el.style.left = (h.x * W) + 'px';
+        el.style.top  = (h.y * H - 12) + 'px';
+        container.appendChild(el);
+    });
+}
+
+// ── Canvas Render Loop ────────────────────────────────────────────────
+function drawFrame() {
+    ctx.clearRect(0, 0, W, H);
+    drawBackground();
+    drawContinents();
+    drawGrid();
+    drawRegionLabels();
+    drawFlows();
+    drawHubs();
+    requestAnimationFrame(drawFrame);
+}
+
+function drawBackground() {
+    // Radial gradient: dark blue center
+    const grad = ctx.createRadialGradient(W*0.5, H*0.5, 0, W*0.5, H*0.5, W*0.7);
+    grad.addColorStop(0, '#020e18');
+    grad.addColorStop(1, '#020608');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+}
+
+function drawGrid() {
+    ctx.strokeStyle = 'rgba(0,200,120,0.035)';
+    ctx.lineWidth = 0.5;
+    const gridX = W / 24, gridY = H / 12;
+    for (let x = 0; x <= W; x += gridX) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    }
+    for (let y = 0; y <= H; y += gridY) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    }
+    // Equator & Prime Meridian
+    ctx.strokeStyle = 'rgba(0,200,120,0.08)';
+    ctx.lineWidth = 1;
+    const eq = H * 0.5;
+    ctx.setLineDash([4, 8]);
+    ctx.beginPath(); ctx.moveTo(0, eq); ctx.lineTo(W, eq); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(W*0.5, 0); ctx.lineTo(W*0.5, H); ctx.stroke();
+    ctx.setLineDash([]);
+}
+
+function drawContinents() {
+    CONTINENTS.forEach(poly => {
+        ctx.beginPath();
+        ctx.moveTo(poly[0][0]*W, poly[0][1]*H);
+        for (let i=1; i<poly.length; i++) {
+            ctx.lineTo(poly[i][0]*W, poly[i][1]*H);
+        }
+        ctx.closePath();
+        ctx.fillStyle   = 'rgba(0,160,80,0.07)';
+        ctx.strokeStyle = 'rgba(0,200,100,0.18)';
+        ctx.lineWidth   = 0.8;
+        ctx.fill();
+        ctx.stroke();
+    });
+}
+
+function drawRegionLabels() {
+    const regions = [
+        { label:'AMERICAS', x:0.14, y:0.88 },
+        { label:'EMEA',     x:0.48, y:0.88 },
+        { label:'APAC',     x:0.78, y:0.88 },
+    ];
+    ctx.font = '9px Monaco, Courier New, monospace';
+    ctx.textAlign = 'center';
+    regions.forEach(r => {
+        ctx.fillStyle = 'rgba(0,200,120,0.2)';
+        ctx.fillText(r.label, r.x*W, r.y*H);
+    });
+    ctx.textAlign = 'left';
+}
+
+// ── Hubs ─────────────────────────────────────────────────────────────
+function drawHubs() {
+    const now = Date.now();
+    HUBS.forEach(h => {
+        const px = h.x * W, py = h.y * H;
+        const pulse = Math.sin(now / 1000 + h.x * 10) * 0.3 + 0.7;
+
+        // Outer glow
+        const grad = ctx.createRadialGradient(px, py, 0, px, py, 18);
+        grad.addColorStop(0, `rgba(0,232,135,${0.15 * pulse})`);
+        grad.addColorStop(1, 'transparent');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(px, py, 18, 0, Math.PI*2);
+        ctx.fill();
+
+        // Ring
+        ctx.beginPath();
+        ctx.arc(px, py, 5, 0, Math.PI*2);
+        ctx.strokeStyle = `rgba(0,232,135,${0.5 * pulse})`;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Core dot
+        ctx.beginPath();
+        ctx.arc(px, py, 2.5, 0, Math.PI*2);
+        ctx.fillStyle = `rgba(0,232,135,${pulse})`;
+        ctx.shadowColor = '#00e887';
+        ctx.shadowBlur = 8 * pulse;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+    });
+}
+
+// ── Whale Flow Animations ─────────────────────────────────────────────
+class WhaleFlow {
+    constructor(fromHub, toHub, riskLevel, amount) {
+        this.from     = fromHub;
+        this.to       = toHub;
+        this.risk     = riskLevel;
+        this.amount   = amount;
+        this.progress = 0;
+        this.speed    = 0.004 + Math.random() * 0.003;
+        this.created  = Date.now();
+        this.lifespan = 7000; // ms
+        this.particles = [];
+        // Bezier control point (arc upward)
+        this.cpx = (fromHub.x + toHub.x) / 2 * W;
+        this.cpy = Math.min(fromHub.y, toHub.y) * H - H * 0.18;
+    }
+
+    riskColor() {
+        switch (this.risk) {
+            case 'CRITICAL': return '#ff3b3b';
+            case 'HIGH':     return '#ff8c00';
+            case 'MEDIUM':   return '#fbbf24';
+            default:         return '#00e887';
+        }
+    }
+
+    bezier(t) {
+        const x0 = this.from.x*W, y0 = this.from.y*H;
+        const x2 = this.to.x*W,   y2 = this.to.y*H;
+        const x = (1-t)*(1-t)*x0 + 2*(1-t)*t*this.cpx + t*t*x2;
+        const y = (1-t)*(1-t)*y0 + 2*(1-t)*t*this.cpy + t*t*y2;
+        return { x, y };
+    }
+
+    draw(ctx) {
+        const age     = Date.now() - this.created;
+        const opacity = Math.max(0, 1 - age / this.lifespan);
+        const color   = this.riskColor();
+
+        // Path line (trail behind particle)
+        ctx.beginPath();
+        const x0 = this.from.x*W, y0 = this.from.y*H;
+        ctx.moveTo(x0, y0);
+        const steps = 40;
+        const maxStep = Math.floor(this.progress * steps);
+        for (let i = 1; i <= maxStep; i++) {
+            const t = i / steps;
+            const p = this.bezier(t);
+            ctx.lineTo(p.x, p.y);
+        }
+        ctx.strokeStyle = `${color}${Math.floor(opacity * 40).toString(16).padStart(2,'0')}`;
+        ctx.lineWidth = 1.5;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 4;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Moving particle head
+        if (this.progress > 0) {
+            const pos = this.bezier(this.progress);
+            // Glow
+            const g = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, 8);
+            g.addColorStop(0, color + 'cc');
+            g.addColorStop(1, 'transparent');
+            ctx.fillStyle = g;
+            ctx.beginPath(); ctx.arc(pos.x, pos.y, 8, 0, Math.PI*2); ctx.fill();
+            // Core
+            ctx.beginPath(); ctx.arc(pos.x, pos.y, 3, 0, Math.PI*2);
+            ctx.fillStyle = color;
+            ctx.shadowColor = color; ctx.shadowBlur = 10;
+            ctx.fill(); ctx.shadowBlur = 0;
+        }
+
+        this.progress = Math.min(1, this.progress + this.speed);
+        return opacity > 0;
+    }
+}
+
+function drawFlows() {
+    State.flows = State.flows.filter(f => f.draw(ctx));
+    document.getElementById('barFlows').textContent = State.flows.length;
+    document.getElementById('mapFlowCount').textContent = `${State.flows.length} flows tracked`;
+}
+
+function addWhaleFlow(fromId, toId, riskLevel, amount) {
+    const from = HUBS.find(h => h.id === fromId) || HUBS[Math.floor(Math.random()*HUBS.length)];
+    const to   = HUBS.find(h => h.id === toId)   || HUBS[Math.floor(Math.random()*HUBS.length)];
+    if (from.id === to.id) return;
+    State.flows.push(new WhaleFlow(from, to, riskLevel, amount));
+    // Max 15 concurrent flows
+    if (State.flows.length > 15) State.flows.shift();
+}
+
+// ── Risk Level → Hub 매핑 ─────────────────────────────────────────────
+function labelToHub(label) {
+    if (!label) return null;
+    const l = label.toLowerCase();
+    if (l.includes('binance')) return 'SIN';
+    if (l.includes('okx') || l.includes('okex')) return 'HKG';
+    if (l.includes('hashkey')) return 'HKG';
+    if (l.includes('coinbase')) return 'SFO';
+    if (l.includes('kraken')) return 'SFO';
+    if (l.includes('bybit')) return 'SIN';
+    if (l.includes('huobi') || l.includes('htx')) return 'HKG';
+    if (l.includes('kucoin')) return 'SIN';
+    if (l.includes('upbit')) return 'SEO';
+    if (l.includes('dubai') || l.includes('uae')) return 'DXB';
+    return null;
+}
+
+// ── WebSocket ────────────────────────────────────────────────────────
+let wsConnected = false;
+
+function connectWebSocket() {
+    const socket = new SockJS('/ws-roc', null, { transports: ['websocket'] });
+    const stomp  = Stomp.over(socket);
+    stomp.debug   = null;
+
+    stomp.connect({}, frame => {
+        wsConnected = true;
+        document.getElementById('wsStatus').textContent    = '● CONNECTED';
+        document.getElementById('wsStatus').style.color    = 'var(--green)';
+        document.getElementById('barStream').textContent   = 'CONNECTED';
+        console.log('🐋 Whale Alert WebSocket 연결됨');
+
+        // 고래 트랜잭션 구독
+        stomp.subscribe('/topic/whale-alerts', msg => {
+            const whale = JSON.parse(msg.body);
+            handleWhaleAlert(whale);
+        });
+
+        // 기존 ROC 알림도 감시
+        stomp.subscribe('/topic/alerts', msg => {
+            const incident = JSON.parse(msg.body);
+            if (incident.amount > 100) {
+                // ROC 인시던트도 맵에 표시
+                addWhaleFlow(
+                    labelToHub(incident.exchangeTag) || 'NYC',
+                    labelToHub(incident.exchangeTag) || 'HKG',
+                    incident.severity,
+                    incident.amount
+                );
+            }
+        });
+
+    }, err => {
+        wsConnected = false;
+        document.getElementById('wsStatus').textContent = '● RECONNECTING';
+        document.getElementById('wsStatus').style.color = 'var(--orange)';
+        setTimeout(connectWebSocket, 3000);
+    });
+}
+
+// ── 고래 알림 처리 ────────────────────────────────────────────────────
+function handleWhaleAlert(whale) {
+    // 1. 피드 카드 추가
+    addFeedCard(whale);
+
+    // 2. 세계 지도에 flow 추가
+    const fromHub = labelToHub(whale.fromLabel) || randomHub().id;
+    const toHub   = labelToHub(whale.toLabel)   || randomHub().id;
+    addWhaleFlow(fromHub, toHub, whale.riskLevel, whale.amount);
+
+    // 3. CRITICAL이면 border flash + toast
+    if (whale.riskLevel === 'CRITICAL') {
+        flashThreat();
+        showToast(whale, true);
+    } else if (whale.riskLevel === 'HIGH') {
+        showToast(whale, false);
+    }
+
+    // 4. 볼륨 업데이트
+    State.ethVolume += whale.amount || 0;
+    const barEth = document.getElementById('barEthVol');
+    if (barEth) barEth.textContent = formatNum(State.ethVolume) + ' ETH';
+    if (whale.riskLevel === 'CRITICAL') {
+        State.criticalCount++;
+        document.getElementById('barCritical').textContent = State.criticalCount;
+    }
+
+    // 5. 마지막 이벤트 레이블
+    document.getElementById('lastEventLabel').textContent =
+        `Last: ${whale.assetSymbol} ${formatNum(whale.amount)} → ${whale.toLabel || 'Unknown'}`;
+
+    // 6. 카운터 갱신
+    State.feedCount++;
+    State.totalAlerts++;
+    document.getElementById('feedCount').textContent = State.feedCount + ' ALERTS';
+    document.getElementById('totalAlerts').textContent = State.totalAlerts;
+
+    // 7. 위협 수준 동적 갱신
+    updateThreatLevel(whale.riskLevel);
+
+    // 8. Activity heatmap 갱신
+    updateActivityGrid();
+
+    // 9. Ticker 추가
+    addTickerItem(whale);
+}
+
+// ── Feed Card DOM ─────────────────────────────────────────────────────
+function addFeedCard(whale) {
+    const feed = document.getElementById('whaleFeed');
+    const risk = (whale.riskLevel || 'info').toLowerCase();
+    const fromAddr = whale.fromAddress ? whale.fromAddress.substring(0,10)+'...' : 'unknown';
+    const toAddr   = whale.toAddress   ? whale.toAddress.substring(0,10)+'...'   : 'unknown';
+    const usdVal   = whale.amountUsd   ? '≈ $' + formatMoney(whale.amountUsd)    : '';
+    const fromPill = makeLabelPill(whale.fromLabel, whale.fromLabelType);
+    const toPill   = makeLabelPill(whale.toLabel,   whale.toLabelType);
+    const chainPill= `<span class="label-pill chain-${(whale.assetSymbol||'eth').toLowerCase()}">${whale.assetSymbol||'ETH'}</span>`;
+
+    const html = `
+    <div class="whale-card ${risk}">
+        <div class="whale-card-top">
+            <div class="whale-amount">${formatNum(whale.amount)} ${whale.assetSymbol||'ETH'}</div>
+            <div class="whale-card-meta">
+                <span class="risk-badge ${risk}">${whale.riskLevel||'INFO'}</span>
+                <span class="whale-time">JUST NOW</span>
+            </div>
+        </div>
+        <div class="whale-flow">
+            <span class="addr">${fromAddr}</span>
+            <span class="arrow">→</span>
+            <span class="addr">${toAddr}</span>
+        </div>
+        <div class="label-pills">
+            ${chainPill}
+            ${fromPill}
+            ${toPill}
+        </div>
+        ${usdVal ? `<div class="usd-val">${usdVal}</div>` : ''}
+    </div>`;
+
+    feed.insertAdjacentHTML('afterbegin', html);
+
+    // 최대 50개 카드 유지
+    const cards = feed.querySelectorAll('.whale-card');
+    if (cards.length > 50) cards[cards.length-1].remove();
+}
+
+function makeLabelPill(label, type) {
+    if (!label || label === 'Unknown') return '';
+    const cls = (type || 'unknown').toLowerCase();
+    return `<span class="label-pill ${cls}">${label}</span>`;
+}
+
+// ── Threat Flash ──────────────────────────────────────────────────────
+function flashThreat() {
+    const el = document.getElementById('threatFlash');
+    el.classList.remove('active');
+    void el.offsetWidth; // reflow
+    el.classList.add('active');
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────
+function showToast(whale, isCritical) {
+    const container = document.getElementById('toastContainer');
+    const div = document.createElement('div');
+    div.className = `toast ${isCritical ? 'critical' : ''}`;
+    div.innerHTML = `
+        <div style="font-weight:700;margin-bottom:4px;color:${isCritical ? 'var(--red)' : 'var(--orange)'}">
+            ${isCritical ? '🚨' : '⚠️'} ${whale.riskLevel} WHALE DETECTED
+        </div>
+        <div>${formatNum(whale.amount)} ${whale.assetSymbol} → ${whale.toLabel || 'Unknown'}</div>
+        <div style="font-size:9px;color:var(--text-3);margin-top:2px;">${whale.txHash ? whale.txHash.substring(0,20)+'...' : ''}</div>`;
+    container.appendChild(div);
+    setTimeout(() => div.remove(), 5000);
+}
+
+// ── Threat Level Meter ────────────────────────────────────────────────
+function updateThreatLevel(riskLevel) {
+    const bump = { CRITICAL: 5, HIGH: 2, MEDIUM: 1, INFO: 0 }[riskLevel] || 0;
+    State.threatLevel = Math.min(99, State.threatLevel + bump);
+    // Slow decay
+    setTimeout(() => { State.threatLevel = Math.max(40, State.threatLevel - 1); updateThreatUI(); }, 30000);
+    updateThreatUI();
+}
+
+function updateThreatUI() {
+    const pct = State.threatLevel;
+    document.getElementById('threatPct').textContent = pct;
+    document.getElementById('threatFill').style.width = pct + '%';
+    const big = document.getElementById('threatPct');
+    if (pct >= 80) { big.className='big-num red'; document.getElementById('statThreat').textContent='CRITICAL'; }
+    else if (pct >= 60) { big.className='big-num orange'; document.getElementById('statThreat').textContent='HIGH'; }
+    else { big.className='big-num green'; document.getElementById('statThreat').textContent='MEDIUM'; }
+}
+
+// ── Activity Heatmap ──────────────────────────────────────────────────
+const activityData = new Array(12).fill(0);
+let activityPointer = new Date().getHours() % 12;
+
+function updateActivityGrid() {
+    activityData[activityPointer] = Math.min(activityData[activityPointer] + 1, 8);
+    renderActivityGrid();
+}
+
+function renderActivityGrid() {
+    const grid = document.getElementById('activityGrid');
+    grid.innerHTML = '';
+    activityData.forEach(v => {
+        const cell = document.createElement('div');
+        cell.className = 'activity-cell ' + (v === 0 ? '' : v <= 2 ? 'l1' : v <= 4 ? 'l2' : v <= 6 ? 'l3' : 'l4');
+        grid.appendChild(cell);
+    });
+}
+
+// ── Volume Chart (Chart.js) ───────────────────────────────────────────
+const volCtx   = document.getElementById('volumeChart').getContext('2d');
+const volHours = Array.from({length:12}, (_,i)=> `${i*2}h`);
+const volData  = { eth: new Array(12).fill(0), btc: new Array(12).fill(0) };
+
+const volumeChart = new Chart(volCtx, {
+    type: 'bar',
+    data: {
+        labels: volHours,
+        datasets: [
+            {
+                label: 'ETH (×1K)',
+                data: volData.eth,
+                backgroundColor: 'rgba(98,126,234,0.5)',
+                borderColor: '#627eea',
+                borderWidth: 1,
+                borderRadius: 2,
+            },
+            {
+                label: 'BTC',
+                data: volData.btc,
+                backgroundColor: 'rgba(247,147,26,0.5)',
+                borderColor: '#f7931a',
+                borderWidth: 1,
+                borderRadius: 2,
+            }
+        ]
+    },
+    options: {
+        responsive: true, maintainAspectRatio: false,
+        animation: { duration: 500 },
+        plugins: { legend: { display: false } },
+        scales: {
+            x: { ticks: { color:'#445850', font:{size:8} }, grid: { color:'rgba(0,200,120,0.05)' } },
+            y: { ticks: { color:'#445850', font:{size:8} }, grid: { color:'rgba(0,200,120,0.05)' }, beginAtZero: true }
+        }
+    }
+});
+
+function updateVolumeChart(whale) {
+    const hour = new Date().getHours();
+    const idx  = Math.floor(hour / 2);
+    if (whale.assetSymbol === 'ETH') {
+        volData.eth[idx] = (volData.eth[idx] || 0) + (whale.amount / 1000);
+    } else {
+        volData.btc[idx] = (volData.btc[idx] || 0) + (whale.amount || 0);
+    }
+    volumeChart.data.datasets[0].data = [...volData.eth];
+    volumeChart.data.datasets[1].data = [...volData.btc];
+    volumeChart.update('active');
+}
+
+// ── Address Lookup ────────────────────────────────────────────────────
+function selectChain(chain) {
+    State.selectedChain = chain;
+    document.getElementById('btnEth').className = 'chain-btn eth' + (chain === 'eth' ? ' active' : '');
+    document.getElementById('btnBtc').className = 'chain-btn btc' + (chain === 'btc' ? ' active' : '');
+}
+
+async function performLookup() {
+    const addr = document.getElementById('lookupAddr').value.trim();
+    if (!addr) return;
+
+    const spinner = document.getElementById('lookupSpinner');
+    const result  = document.getElementById('lookupResult');
+    spinner.style.display = 'block';
+    result.classList.remove('show');
+
+    try {
+        // 1. OKLink API 호출
+        const res = await fetch(`/api/whale/label?address=${encodeURIComponent(addr)}&chain=${State.selectedChain}`);
+        const data = await res.json();
+
+        // 2. 데모: 알려진 주소 하드코딩 결과
+        const knownLabels = {
+            '0x28c6c06298d514db089934071355e5743bf21d60': { label:'Binance Hot Wallet', type:'Exchange', risk:'HIGH' },
+            '0x6cc5f688a315f3dc28a7781717a9a798a59fda7b': { label:'OKX Hot Wallet',     type:'Exchange', risk:'HIGH' },
+            '0xbe0eb53f46cd790cd13851d5eff43d12404d33e8': { label:'Binance Cold Wallet', type:'ColdWallet', risk:'LOW' },
+            '0x1db3439a222c519ab44bb1144fc28167b4fa6ee6': { label:'Vitalik Buterin',    type:'Whale',    risk:'MEDIUM' },
+        };
+        const known = knownLabels[addr.toLowerCase()];
+        const labelData = known || { label: data.label || 'Unknown', type: data.type || 'Unknown', risk: 'UNKNOWN' };
+
+        document.getElementById('lrAddr').textContent  = addr.substring(0,20) + '...';
+        document.getElementById('lrLabel').textContent = labelData.label;
+        document.getElementById('lrType').innerHTML = `<span class="label-pill ${(labelData.type||'unknown').toLowerCase()}">${labelData.type}</span>`;
+        document.getElementById('lrRisk').innerHTML = `<span class="risk-badge ${(labelData.risk||'info').toLowerCase()}">Risk: ${labelData.risk}</span>`;
+
+        result.classList.add('show');
+
+        // 맵에 표시
+        const hub = labelToHub(labelData.label) || 'HKG';
+        addWhaleFlow(randomHub().id, hub, labelData.risk, 0);
+
+    } catch (e) {
+        document.getElementById('lrLabel').textContent = 'Lookup failed';
+        result.classList.add('show');
+    } finally {
+        spinner.style.display = 'none';
+    }
+}
+
+document.getElementById('lookupAddr').addEventListener('keydown', e => {
+    if (e.key === 'Enter') performLookup();
+});
+
+// ── Ticker ────────────────────────────────────────────────────────────
+function addTickerItem(whale) {
+    const inner = document.getElementById('tickerInner');
+    const item  = document.createElement('span');
+    item.className = 'ticker-item';
+    item.innerHTML = `WHALE: <span class="${whale.riskLevel === 'CRITICAL' ? 't-down' : 't-up'}">${formatNum(whale.amount)} ${whale.assetSymbol}</span> → ${whale.toLabel || 'Unknown'} | just now`;
+    inner.appendChild(item.cloneNode(true));
+    inner.appendChild(item);
+}
+
+// ── Live Clock ────────────────────────────────────────────────────────
+function updateClock() {
+    const now = new Date();
+    document.getElementById('liveClock').textContent =
+        now.toISOString().substring(0,19).replace('T',' ') + ' UTC';
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── Demo Mode (QuickNode 미연결 시 시뮬레이션) ────────────────────────
+// ETH 전용 시나리오 (QuickNode Ethereum Mainnet)
+const DEMO_SCENARIOS = [
+    { exchange:'HashKey Exchange',  type:'Exchange', risk:'CRITICAL' },
+    { exchange:'OKX Hot Wallet',    type:'Exchange', risk:'CRITICAL' },
+    { exchange:'Binance Hot Wallet',type:'Exchange', risk:'HIGH'     },
+    { exchange:'Coinbase Prime',    type:'Exchange', risk:'HIGH'     },
+    { exchange:'Unknown Whale',     type:'Whale',    risk:'HIGH'     },
+    { exchange:'Uniswap V3 Pool',   type:'DeFi',     risk:'MEDIUM'  },
+];
+
+function generateDemoWhale() {
+    const s      = DEMO_SCENARIOS[Math.floor(Math.random() * DEMO_SCENARIOS.length)];
+    const amount = 1000 + Math.random() * 9000;  // 1,000 ~ 10,000 ETH
+
+    return {
+        txHash:       '0x' + Math.random().toString(16).substring(2,18) + '...',
+        chainName:    'Ethereum',
+        assetSymbol:  'ETH',
+        amount:       Math.round(amount * 10) / 10,
+        amountUsd:    amount * 2400,
+        fromAddress:  '0x' + Math.random().toString(16).substring(2,42),
+        toAddress:    '0x' + Math.random().toString(16).substring(2,42),
+        fromLabel:    Math.random() > 0.6 ? 'Unknown' : 'Whale Wallet',
+        toLabel:      s.exchange,
+        fromLabelType:'Unknown',
+        toLabelType:  s.type,
+        riskLevel:    s.risk,
+    };
+}
+
+function startDemoMode() {
+    console.log('🔴 Demo mode: 실데이터 WebSocket 연결 전 시뮬레이션 데이터 생성 중');
+    // 초기 빠른 burst (5개)
+    for (let i = 0; i < 5; i++) {
+        setTimeout(() => handleWhaleAlert(generateDemoWhale()), i * 600);
+    }
+    // 이후 주기적 생성 (8~20초 랜덤)
+    function scheduleNext() {
+        const delay = 8000 + Math.random() * 12000;
+        setTimeout(() => {
+            handleWhaleAlert(generateDemoWhale());
+            updateVolumeChart(generateDemoWhale());
+            scheduleNext();
+        }, delay);
+    }
+    scheduleNext();
+}
+
+// ── 유틸 ─────────────────────────────────────────────────────────────
+function formatNum(n) {
+    if (!n && n !== 0) return '—';
+    return new Intl.NumberFormat('en', {maximumFractionDigits:1}).format(n);
+}
+function formatMoney(n) {
+    if (!n) return '—';
+    if (n >= 1e9) return (n/1e9).toFixed(1) + 'B';
+    if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+    if (n >= 1e3) return (n/1e3).toFixed(1) + 'K';
+    return n.toFixed(0);
+}
+function randomHub() {
+    return HUBS[Math.floor(Math.random() * HUBS.length)];
+}
+
+// ── 초기화 ────────────────────────────────────────────────────────────
+renderActivityGrid();
+drawFrame();           // Canvas 렌더 루프 시작
+connectWebSocket();    // WebSocket 연결
+setTimeout(startDemoMode, 1200);  // 1.2초 후 데모 시작 (WS 연결 대기)
+
+</script>
+</body>
+</html>
