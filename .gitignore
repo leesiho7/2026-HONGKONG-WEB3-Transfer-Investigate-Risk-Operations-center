@@ -31,3 +31,6 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Secrets — 로컬 개발용 민감 정보 (커밋하지 않음) ###
+src/main/resources/application-local.properties

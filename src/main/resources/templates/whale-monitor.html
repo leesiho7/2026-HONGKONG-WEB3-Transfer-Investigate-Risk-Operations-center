@@ -1,551 +1,13 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org" lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WHALE ALERT — Web3 Threat Intelligence</title>
-<script src="https://cdn.jsdelivr.net/npm/sockjs-client@1.6.1/dist/sockjs.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<style>
-/* ─── RESET & CSS VARS ─────────────────────────────────────────────── */
-*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-
-:root {
-    --bg-void:      #020608;
-    --bg-panel:     #060d12;
-    --bg-card:      #0a1520;
-    --border:       rgba(0, 200, 120, 0.12);
-    --border-glow:  rgba(0, 200, 120, 0.35);
-    --green:        #00e887;
-    --green-dim:    rgba(0, 232, 135, 0.15);
-    --blue:         #0ea5e9;
-    --blue-dim:     rgba(14, 165, 233, 0.15);
-    --red:          #ff3b3b;
-    --red-dim:      rgba(255, 59, 59, 0.15);
-    --orange:       #ff8c00;
-    --orange-dim:   rgba(255, 140, 0, 0.15);
-    --purple:       #a855f7;
-    --purple-dim:   rgba(168, 85, 247, 0.15);
-    --text-1:       #e8f4f0;
-    --text-2:       #8fa8a0;
-    --text-3:       #445850;
-    --font-mono:    'Monaco', 'Cascadia Code', 'Fira Code', 'Courier New', monospace;
-}
-
-html, body { height: 100%; overflow: hidden; background: var(--bg-void); }
-
-body {
-    font-family: var(--font-mono);
-    color: var(--text-1);
-    font-size: 12px;
-    line-height: 1.5;
-}
-
-/* ─── SCANLINE OVERLAY ─────────────────────────────────────────────── */
-body::after {
-    content: '';
-    position: fixed; inset: 0;
-    background: repeating-linear-gradient(0deg,
-        transparent, transparent 2px,
-        rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
-    pointer-events: none; z-index: 9999;
-}
-
-/* ─── LAYOUT ───────────────────────────────────────────────────────── */
-.app-shell {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    overflow: hidden;
-}
-
-/* ─── TOP BAR ──────────────────────────────────────────────────────── */
-.top-bar {
-    height: 52px;
-    background: var(--bg-panel);
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    padding: 0 16px;
-    gap: 24px;
-    flex-shrink: 0;
-    position: relative;
-}
-
-.top-bar::after {
-    content: '';
-    position: absolute;
-    bottom: 0; left: 0; right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, var(--green), transparent);
-    animation: topline 4s ease-in-out infinite;
-}
-@keyframes topline {
-    0%,100% { opacity: 0.3; } 50% { opacity: 1; }
-}
-
-.brand {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-.brand-icon {
-    width: 36px; height: 36px;
-    background: linear-gradient(135deg, var(--green-dim), var(--blue-dim));
-    border: 1px solid var(--border-glow);
-    border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 18px;
-}
-.brand-name {
-    font-size: 15px; font-weight: 700;
-    letter-spacing: 3px;
-    background: linear-gradient(90deg, var(--green), var(--blue));
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-}
-.brand-sub {
-    font-size: 9px; color: var(--text-3);
-    letter-spacing: 2px; text-transform: uppercase;
-}
-
-.top-bar-stats {
-    display: flex; gap: 8px; flex: 1;
-}
-.stat-chip {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 4px 12px;
-    display: flex; flex-direction: column; align-items: center;
-    min-width: 100px;
-}
-.stat-chip .label { font-size: 9px; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; }
-.stat-chip .value { font-size: 13px; font-weight: 700; }
-.stat-chip.eth .value  { color: #627eea; }
-.stat-chip.btc .value  { color: #f7931a; }
-.stat-chip.alert .value { color: var(--red); }
-.stat-chip.node .value  { color: var(--green); }
-
-.top-bar-right {
-    display: flex; align-items: center; gap: 16px;
-}
-
-.live-indicator {
-    display: flex; align-items: center; gap: 6px;
-    font-size: 10px; font-weight: 700; letter-spacing: 2px;
-    color: var(--green);
-}
-.live-dot {
-    width: 8px; height: 8px;
-    background: var(--green);
-    border-radius: 50%;
-    box-shadow: 0 0 8px var(--green);
-    animation: pulse-dot 1.5s infinite;
-}
-@keyframes pulse-dot {
-    0%,100% { opacity: 1; transform: scale(1); }
-    50%      { opacity: 0.6; transform: scale(0.85); }
-}
-
-#liveClock {
-    font-size: 13px; font-weight: 600;
-    color: var(--text-2);
-    letter-spacing: 1px;
-    font-variant-numeric: tabular-nums;
-}
-
-.operator-chip {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 4px 12px;
-    font-size: 10px; color: var(--text-2);
-    letter-spacing: 1px;
-}
-
-/* ─── MAIN LAYOUT ──────────────────────────────────────────────────── */
-.main-layout {
-    display: flex;
-    flex: 1;
-    overflow: hidden;
-}
-
-/* ─── LEFT: WHALE FEED ─────────────────────────────────────────────── */
-.feed-panel {
-    width: 340px;
-    flex-shrink: 0;
-    background: var(--bg-panel);
-    border-right: 1px solid var(--border);
-    display: flex; flex-direction: column;
-}
-
-.panel-header {
-    padding: 10px 14px;
-    border-bottom: 1px solid var(--border);
-    display: flex; align-items: center; justify-content: space-between;
-    flex-shrink: 0;
-}
-.panel-title {
-    font-size: 10px; font-weight: 700;
-    letter-spacing: 2px; color: var(--text-2);
-    text-transform: uppercase;
-}
-.panel-badge {
-    background: var(--red-dim);
-    border: 1px solid var(--red);
-    color: var(--red);
-    border-radius: 3px;
-    padding: 1px 6px;
-    font-size: 9px; font-weight: 700;
-}
-
-.feed-list {
-    flex: 1; overflow-y: auto;
-    padding: 8px;
-}
-.feed-list::-webkit-scrollbar { width: 3px; }
-.feed-list::-webkit-scrollbar-thumb { background: var(--border-glow); border-radius: 2px; }
-
-/* ─── WHALE FEED CARD ──────────────────────────────────────────────── */
-.whale-card {
-    background: var(--bg-card);
-    border-radius: 6px;
-    padding: 10px 12px;
-    margin-bottom: 6px;
-    border-left: 3px solid;
-    position: relative;
-    animation: cardIn 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-    cursor: pointer;
-    transition: background 0.2s;
-}
-.whale-card:hover { background: #0d1e2c; }
-@keyframes cardIn {
-    from { opacity: 0; transform: translateX(-20px); }
-    to   { opacity: 1; transform: translateX(0); }
-}
-.whale-card.critical { border-color: var(--red); }
-.whale-card.high     { border-color: var(--orange); }
-.whale-card.medium   { border-color: #fbbf24; }
-.whale-card.info     { border-color: var(--green); }
-
-.whale-card-top {
-    display: flex; justify-content: space-between; align-items: flex-start;
-    margin-bottom: 6px;
-}
-.whale-amount {
-    font-size: 16px; font-weight: 800;
-    letter-spacing: -0.5px;
-}
-.whale-card.critical .whale-amount { color: var(--red); text-shadow: 0 0 12px rgba(255,59,59,0.5); }
-.whale-card.high     .whale-amount { color: var(--orange); text-shadow: 0 0 12px rgba(255,140,0,0.5); }
-.whale-card.medium   .whale-amount { color: #fbbf24; }
-.whale-card.info     .whale-amount { color: var(--green); text-shadow: 0 0 12px rgba(0,232,135,0.4); }
-
-.whale-card-meta {
-    display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
-}
-.risk-badge {
-    font-size: 9px; font-weight: 700; letter-spacing: 1px;
-    padding: 2px 6px; border-radius: 3px;
-}
-.risk-badge.critical { background: var(--red-dim); color: var(--red); border: 1px solid var(--red); }
-.risk-badge.high     { background: var(--orange-dim); color: var(--orange); border: 1px solid var(--orange); }
-.risk-badge.medium   { background: rgba(251,191,36,0.15); color: #fbbf24; border: 1px solid #fbbf24; }
-.risk-badge.info     { background: var(--green-dim); color: var(--green); border: 1px solid var(--green); }
-
-.whale-time { font-size: 9px; color: var(--text-3); }
-
-.whale-flow {
-    display: flex; align-items: center; gap: 4px;
-    font-size: 10px; margin-bottom: 6px;
-}
-.addr { font-size: 10px; color: var(--text-2); font-family: var(--font-mono); }
-.arrow { color: var(--text-3); font-size: 10px; }
-
-.label-pills {
-    display: flex; gap: 4px; flex-wrap: wrap;
-}
-.label-pill {
-    font-size: 9px; padding: 1px 6px; border-radius: 3px; font-weight: 600;
-}
-.label-pill.exchange { background: var(--blue-dim); color: var(--blue); border: 1px solid rgba(14,165,233,0.3); }
-.label-pill.hacker   { background: var(--red-dim);  color: var(--red);  border: 1px solid rgba(255,59,59,0.3); }
-.label-pill.coldwallet { background: var(--purple-dim); color: var(--purple); border: 1px solid rgba(168,85,247,0.3); }
-.label-pill.defi     { background: var(--green-dim); color: var(--green); border: 1px solid rgba(0,232,135,0.3); }
-.label-pill.whale    { background: rgba(251,191,36,0.15); color: #fbbf24; border: 1px solid rgba(251,191,36,0.3); }
-.label-pill.unknown  { background: rgba(100,116,139,0.15); color: #64748b; border: 1px solid rgba(100,116,139,0.3); }
-.label-pill.identified { background: rgba(100,116,139,0.12); color: #94a3b8; border: 1px solid rgba(100,116,139,0.25); }
-.label-pill.chain-eth { background: rgba(98,126,234,0.15); color: #627eea; border: 1px solid rgba(98,126,234,0.3); }
-.label-pill.chain-btc { background: rgba(247,147,26,0.15); color: #f7931a; border: 1px solid rgba(247,147,26,0.3); }
-
-.usd-val { font-size: 9px; color: var(--text-3); margin-top: 4px; text-align: right; }
-
-/* ─── CENTER: MAP PANEL ────────────────────────────────────────────── */
-.map-panel {
-    flex: 1;
-    display: flex; flex-direction: column;
-    overflow: hidden;
-    position: relative;
-}
-
-.map-container {
-    flex: 1;
-    position: relative;
-    background: #020a0e;
-    overflow: hidden;
-    min-height: 0;
-}
-
-#threatMap {
-    width: 100%; height: 100%;
-    display: block;
-}
-
-/* Map overlay labels */
-.hub-label {
-    position: absolute;
-    font-size: 9px; font-weight: 700;
-    color: var(--text-2);
-    letter-spacing: 1px;
-    pointer-events: none;
-    text-shadow: 0 0 8px rgba(0,0,0,0.9), 0 0 4px rgba(0,0,0,1);
-    transform: translate(-50%, -100%);
-    margin-top: -6px;
-    white-space: nowrap;
-}
-
-/* Map corner info */
-.map-corner {
-    position: absolute;
-    font-size: 9px; color: var(--text-3);
-    letter-spacing: 1px; text-transform: uppercase;
-}
-.map-corner.tl { top: 12px; left: 14px; }
-.map-corner.tr { top: 12px; right: 14px; }
-.map-corner.bl { bottom: 12px; left: 14px; }
-.map-corner.br { bottom: 12px; right: 14px; color: var(--green); }
-
-/* Threat alert flash overlay */
-.threat-flash {
-    position: absolute; inset: 0;
-    border: 2px solid var(--red);
-    border-radius: 0;
-    pointer-events: none;
-    opacity: 0;
-    box-shadow: inset 0 0 60px rgba(255,59,59,0.15);
-}
-.threat-flash.active {
-    animation: flashBorder 0.8s ease-out;
-}
-@keyframes flashBorder {
-    0%   { opacity: 1; }
-    100% { opacity: 0; }
-}
-
-/* ─── BOTTOM STATS BAR ─────────────────────────────────────────────── */
-.bottom-bar {
-    height: 42px;
-    background: var(--bg-panel);
-    border-top: 1px solid var(--border);
-    display: flex; align-items: center;
-    padding: 0 16px; gap: 24px;
-    flex-shrink: 0;
-}
-
-.bottom-stat {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 11px;
-}
-.bottom-stat .key  { color: var(--text-3); }
-.bottom-stat .val  { font-weight: 700; }
-.bottom-stat.green .val { color: var(--green); }
-.bottom-stat.red   .val { color: var(--red); }
-.bottom-stat.blue  .val { color: var(--blue); }
-.bottom-stat.eth   .val { color: #627eea; }
-.bottom-stat.btc   .val { color: #f7931a; }
-
-.separator { color: var(--text-3); }
-
-/* ─── RIGHT: TOOLS PANEL ────────────────────────────────────────────── */
-.tools-panel {
-    width: 280px;
-    flex-shrink: 0;
-    background: var(--bg-panel);
-    border-left: 1px solid var(--border);
-    display: flex; flex-direction: column;
-    overflow-y: auto;
-}
-.tools-panel::-webkit-scrollbar { width: 3px; }
-.tools-panel::-webkit-scrollbar-thumb { background: var(--border-glow); }
-
-.tool-section {
-    border-bottom: 1px solid var(--border);
-    padding: 12px;
-}
-.tool-section-title {
-    font-size: 9px; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 2px;
-    color: var(--text-3); margin-bottom: 10px;
-}
-
-/* Address Lookup */
-.lookup-input {
-    width: 100%;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 8px 10px;
-    font-size: 11px; color: var(--text-1);
-    font-family: var(--font-mono);
-    outline: none;
-    transition: border-color 0.2s;
-}
-.lookup-input:focus { border-color: var(--border-glow); }
-.lookup-input::placeholder { color: var(--text-3); }
-
-.lookup-chain-row {
-    display: flex; gap: 6px; margin: 8px 0;
-}
-.chain-btn {
-    flex: 1;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    padding: 5px;
-    font-size: 10px; font-weight: 700;
-    color: var(--text-2); font-family: var(--font-mono);
-    cursor: pointer; transition: all 0.2s;
-}
-.chain-btn.active.eth { border-color: #627eea; color: #627eea; background: rgba(98,126,234,0.1); }
-.chain-btn.active.btc { border-color: #f7931a; color: #f7931a; background: rgba(247,147,26,0.1); }
-.chain-btn:hover      { border-color: var(--border-glow); }
-
-.lookup-btn {
-    width: 100%;
-    background: linear-gradient(90deg, rgba(0,232,135,0.15), rgba(14,165,233,0.15));
-    border: 1px solid var(--border-glow);
-    border-radius: 6px;
-    padding: 8px;
-    font-size: 11px; font-weight: 700;
-    color: var(--green); font-family: var(--font-mono);
-    cursor: pointer; transition: all 0.2s;
-    letter-spacing: 1px;
-}
-.lookup-btn:hover { background: linear-gradient(90deg, var(--green-dim), var(--blue-dim)); }
-
-.lookup-result {
-    margin-top: 10px;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 10px;
-    font-size: 11px;
-    display: none;
-}
-.lookup-result.show { display: block; animation: fadeIn 0.3s; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-
-.lr-addr { font-size: 10px; color: var(--text-3); word-break: break-all; margin-bottom: 8px; }
-.lr-label { font-size: 16px; font-weight: 700; color: var(--text-1); margin-bottom: 4px; }
-.lr-type  { font-size: 10px; margin-bottom: 8px; }
-.lr-risk  { font-size: 10px; }
-
-/* Volume Chart */
-.mini-chart-wrap {
-    height: 90px;
-    position: relative;
-}
-
-/* Chain Stats */
-.chain-stat-row {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 6px 0;
-    border-bottom: 1px solid rgba(255,255,255,0.04);
-}
-.chain-stat-row:last-child { border-bottom: none; }
-.chain-name { font-size: 11px; font-weight: 600; }
-.chain-vol  { font-size: 11px; color: var(--text-2); }
-
-/* Threat Level Meter */
-.threat-meter {
-    height: 8px;
-    background: var(--bg-card);
-    border-radius: 4px;
-    overflow: hidden;
-    margin-top: 6px;
-}
-.threat-fill {
-    height: 100%;
-    border-radius: 4px;
-    transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* Recent Activity Heatmap */
-.activity-grid {
-    display: grid;
-    grid-template-columns: repeat(12, 1fr);
-    gap: 2px;
-    margin-top: 4px;
-}
-.activity-cell {
-    height: 14px;
-    border-radius: 2px;
-    background: var(--bg-card);
-    transition: background 0.3s;
-}
-.activity-cell.l1 { background: rgba(0,232,135,0.2); }
-.activity-cell.l2 { background: rgba(0,232,135,0.4); }
-.activity-cell.l3 { background: rgba(0,232,135,0.7); }
-.activity-cell.l4 { background: var(--green); box-shadow: 0 0 4px var(--green); }
-
-/* Pulse number display */
-.big-num {
-    font-size: 28px; font-weight: 800;
-    letter-spacing: -1px;
-}
-.big-num.green  { color: var(--green); text-shadow: 0 0 20px rgba(0,232,135,0.3); }
-.big-num.red    { color: var(--red);   text-shadow: 0 0 20px rgba(255,59,59,0.3); }
-.big-num.orange { color: var(--orange); }
-
-/* Scrolling ticker */
-.ticker-wrap {
-    overflow: hidden; height: 22px;
-}
-.ticker-inner {
-    display: flex; gap: 32px;
-    animation: tickerScroll 30s linear infinite;
-    white-space: nowrap;
-}
-@keyframes tickerScroll {
-    0%   { transform: translateX(0); }
-    100% { transform: translateX(-50%); }
-}
-.ticker-item { font-size: 10px; color: var(--text-2); }
-.ticker-item .t-up   { color: var(--green); }
-.ticker-item .t-down { color: var(--red); }
-
-/* Toast */
-.toast-container {
-    position: fixed; bottom: 20px; right: 300px;
-    z-index: 9000; display: flex; flex-direction: column-reverse; gap: 8px;
-}
-.toast {
-    background: var(--bg-card);
-    border: 1px solid var(--border-glow);
-    border-radius: 8px;
-    padding: 10px 16px;
-    font-size: 11px; color: var(--text-1);
-    box-shadow: 0 4px 24px rgba(0,0,0,0.6);
-    animation: toastIn 0.35s cubic-bezier(0.22,1,0.36,1);
-    max-width: 320px;
-}
-.toast.critical { border-color: var(--red); box-shadow: 0 4px 24px rgba(255,59,59,0.3); }
-@keyframes toastIn {
-    from { opacity: 0; transform: translateX(20px); }
-    to   { opacity: 1; transform: translateX(0); }
-}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WHALE ALERT — Web3 Threat Intelligence</title>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1.6.1/dist/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" th:href="@{/css/whale-monitor.css}">
 </head>
 <body>
 <div class="app-shell">
@@ -905,6 +367,7 @@ function positionHubLabels() {
 
 // ── Canvas Render Loop ────────────────────────────────────────────────
 function drawFrame() {
+    if (!W || !H) { resizeCanvas(); requestAnimationFrame(drawFrame); return; }
     ctx.clearRect(0, 0, W, H);
     drawBackground();
     drawContinents();
@@ -1134,17 +597,22 @@ function connectWebSocket() {
         document.getElementById('barStream').textContent   = 'CONNECTED';
         console.log('🐋 Whale Alert WebSocket 연결됨');
 
-        // 고래 트랜잭션 구독
+        // 고래 트랜잭션 구독 (QuickNode 실데이터)
         stomp.subscribe('/topic/whale-alerts', msg => {
+            // 첫 실데이터 수신 시 데모 모드 즉시 비활성화
+            if (State.demoMode) {
+                State.demoMode = false;
+                console.log('🟢 QuickNode 실데이터 수신 — 데모 모드 비활성화');
+                document.getElementById('mapStatus').textContent = '● LIVE: QUICKNODE DATA';
+            }
             const whale = JSON.parse(msg.body);
             handleWhaleAlert(whale);
         });
 
-        // 기존 ROC 알림도 감시
+        // ROC 인시던트 알림 (서버 시뮬레이션 포함)
         stomp.subscribe('/topic/alerts', msg => {
             const incident = JSON.parse(msg.body);
             if (incident.amount > 100) {
-                // ROC 인시던트도 맵에 표시
                 addWhaleFlow(
                     labelToHub(incident.exchangeTag) || 'NYC',
                     labelToHub(incident.exchangeTag) || 'HKG',
@@ -1167,9 +635,9 @@ function handleWhaleAlert(whale) {
     // 1. 피드 카드 추가
     addFeedCard(whale);
 
-    // 2. 세계 지도에 flow 추가
-    const fromHub = labelToHub(whale.fromLabel) || randomHub().id;
-    const toHub   = labelToHub(whale.toLabel)   || randomHub().id;
+    // 2. 세계 지도에 flow 추가 (서버가 fromHub/toHub를 보내면 우선 사용)
+    const fromHub = whale.fromHub || labelToHub(whale.fromLabel) || randomHub().id;
+    const toHub   = whale.toHub   || labelToHub(whale.toLabel)   || randomHub().id;
     addWhaleFlow(fromHub, toHub, whale.riskLevel, whale.amount);
 
     // 3. CRITICAL이면 border flash + toast
@@ -1321,7 +789,8 @@ const volCtx   = document.getElementById('volumeChart').getContext('2d');
 const volHours = Array.from({length:12}, (_,i)=> `${i*2}h`);
 const volData  = { eth: new Array(12).fill(0), btc: new Array(12).fill(0) };
 
-const volumeChart = new Chart(volCtx, {
+let volumeChart = null;
+try { volumeChart = new Chart(volCtx, {
     type: 'bar',
     data: {
         labels: volHours,
@@ -1353,9 +822,10 @@ const volumeChart = new Chart(volCtx, {
             y: { ticks: { color:'#445850', font:{size:8} }, grid: { color:'rgba(0,200,120,0.05)' }, beginAtZero: true }
         }
     }
-});
+}); } catch(e) { console.warn('Chart.js 로드 실패 — 볼륨 차트 비활성화:', e); }
 
 function updateVolumeChart(whale) {
+    if (!volumeChart) return;
     const hour = new Date().getHours();
     const idx  = Math.floor(hour / 2);
     if (whale.assetSymbol === 'ETH') {
@@ -1473,15 +943,18 @@ function generateDemoWhale() {
 }
 
 function startDemoMode() {
+    if (!State.demoMode) return;  // 이미 실데이터 수신 중이면 시작 안 함
     console.log('🔴 Demo mode: 실데이터 WebSocket 연결 전 시뮬레이션 데이터 생성 중');
-    // 초기 빠른 burst (5개)
+    // 초기 빠른 burst (5개) — demoMode가 false로 바뀌면 즉시 중단
     for (let i = 0; i < 5; i++) {
-        setTimeout(() => handleWhaleAlert(generateDemoWhale()), i * 600);
+        setTimeout(() => { if (State.demoMode) handleWhaleAlert(generateDemoWhale()); }, i * 600);
     }
     // 이후 주기적 생성 (8~20초 랜덤)
     function scheduleNext() {
+        if (!State.demoMode) return;   // 실데이터 수신 시 루프 종료
         const delay = 8000 + Math.random() * 12000;
         setTimeout(() => {
+            if (!State.demoMode) return;
             handleWhaleAlert(generateDemoWhale());
             updateVolumeChart(generateDemoWhale());
             scheduleNext();
@@ -1508,6 +981,7 @@ function randomHub() {
 
 // ── 초기화 ────────────────────────────────────────────────────────────
 renderActivityGrid();
+resizeCanvas();        // 레이아웃 확정 후 캔버스 크기 재측정
 drawFrame();           // Canvas 렌더 루프 시작
 connectWebSocket();    // WebSocket 연결
 setTimeout(startDemoMode, 1200);  // 1.2초 후 데모 시작 (WS 연결 대기)

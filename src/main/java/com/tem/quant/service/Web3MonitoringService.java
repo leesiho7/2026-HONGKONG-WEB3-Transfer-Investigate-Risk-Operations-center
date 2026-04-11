@@ -5,6 +5,7 @@ import com.tem.quant.entity.Severity;
 import com.tem.quant.repository.Web3IncidentRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -21,12 +22,17 @@ public class Web3MonitoringService {
     private final SimpMessagingTemplate messagingTemplate;
     private final Random random = new Random();
 
+    /** application.properties: whale.demo.enabled=false → 실데이터 모드 */
+    @Value("${whale.demo.enabled:true}")
+    private boolean demoEnabled;
+
     /**
-     * 홍콩 Web3 페스티벌 데모용: 10초마다 실제 체인 데이터 기반 분석 시뮬레이션
-     * 빌더 포인트: HashKey, OKX 같은 특정 타겟을 모니터링하는 연출 추가
+     * 데모 모드 전용: 10초마다 시뮬레이션 인시던트 생성
+     * whale.demo.enabled=false 이면 실행되지 않습니다.
      */
-    @Scheduled(fixedRate = 10000, initialDelay = 2000)  // 앱 시작 2초 후 즉시 첫 실행
+    @Scheduled(fixedRate = 10000, initialDelay = 2000)
     public void runRealTimeMonitoring() {
+        if (!demoEnabled) return;   // 실데이터 모드에서는 비활성화
         log.info("🔍 실시간 온체인 위협 분석 중... (Target: HashKey, OKX, Binance)");
         try {
             // 1. 실제 데이터 분석 결과라고 가정된 리스크 시나리오 생성

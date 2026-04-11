@@ -37,6 +37,7 @@ public class WhaleFilterService {
     private final WhaleTransactionRepository repository;
     private final SimpMessagingTemplate messagingTemplate;
     private final OkLinkLabelService labelService;
+    private final WhaleWebSocketHandler whaleWebSocketHandler;
 
     // ETH 임계값 (application.properties: whale.eth.threshold)
     @Value("${whale.eth.threshold:1000}")
@@ -135,9 +136,9 @@ public class WhaleFilterService {
         return "INFO";
     }
 
-    /** WebSocket 브로드캐스트 */
+    /** WebSocket 브로드캐스트 — 지도 시각화 포맷으로 전송 */
     private void broadcast(WhaleTransaction tx) {
-        messagingTemplate.convertAndSend("/topic/whale-alerts", tx);
+        whaleWebSocketHandler.broadcastWhaleEvent(tx);
         log.info("📡 WebSocket 전송: {} {} | {} → {} | Risk={}",
             tx.getAmount(), tx.getAssetSymbol(), tx.getFromLabel(), tx.getToLabel(), tx.getRiskLevel());
     }

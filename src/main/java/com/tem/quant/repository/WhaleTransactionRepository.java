@@ -16,13 +16,15 @@ public interface WhaleTransactionRepository extends JpaRepository<WhaleTransacti
     List<WhaleTransaction> findTop10ByChainNameOrderByDetectedAtDesc(String chainName);
 
     /** 지난 24시간 총 이체량 (ETH) */
-    @Query("SELECT COALESCE(SUM(w.amount), 0) FROM WhaleTransaction w " +
-           "WHERE w.assetSymbol = 'ETH' AND w.detectedAt >= CURRENT_TIMESTAMP - 1 DAY")
+    @Query(value = "SELECT COALESCE(SUM(amount), 0) FROM whale_transaction " +
+                   "WHERE asset_symbol = 'ETH' AND detected_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)",
+           nativeQuery = true)
     Double sumEthLast24h();
 
     /** 지난 24시간 총 이체량 (BTC) */
-    @Query("SELECT COALESCE(SUM(w.amount), 0) FROM WhaleTransaction w " +
-           "WHERE w.assetSymbol = 'BTC' AND w.detectedAt >= CURRENT_TIMESTAMP - 1 DAY")
+    @Query(value = "SELECT COALESCE(SUM(amount), 0) FROM whale_transaction " +
+                   "WHERE asset_symbol = 'BTC' AND detected_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)",
+           nativeQuery = true)
     Double sumBtcLast24h();
 
     long countByRiskLevel(String riskLevel);

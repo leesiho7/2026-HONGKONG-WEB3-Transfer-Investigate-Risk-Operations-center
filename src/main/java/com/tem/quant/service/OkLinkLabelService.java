@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -82,7 +83,8 @@ public class OkLinkLabelService {
                 .header("Ok-Access-Key", apiKey)
                 .retrieve()
                 .bodyToMono(Map.class)
-                .block(); // 동기 호출 (webhook 처리 흐름 내에서 순서 보장 필요)
+                .timeout(Duration.ofSeconds(5))   // OKLink 응답 최대 5초 대기
+                .block();
 
             if (response == null) return LabelResult.unknown();
 
