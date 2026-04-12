@@ -159,6 +159,7 @@ body::after {
     display: flex;
     flex: 1;
     overflow: hidden;
+    min-height: 0;   /* flex 자식에 높이 전파 — 없으면 column 방향 flex가 min-content 크기로 고정 */
 }
 
 /* ─── LEFT: WHALE FEED ─────────────────────────────────────────────── */
@@ -274,6 +275,8 @@ body::after {
 /* ─── CENTER: MAP PANEL ────────────────────────────────────────────── */
 .map-panel {
     flex: 1;
+    min-width: 0;    /* 수평 flex에서 width 전파 */
+    min-height: 0;   /* column 내부 flex 높이 전파 */
     display: flex; flex-direction: column;
     overflow: hidden;
     position: relative;
