@@ -1,6 +1,9 @@
 package com.tem.quant.service;
 
+import com.tem.quant.entity.Severity;
+import com.tem.quant.entity.Web3Incident;
 import com.tem.quant.entity.WhaleTransaction;
+import com.tem.quant.repository.Web3IncidentRepository;
 import com.tem.quant.repository.WhaleTransactionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +38,7 @@ import java.util.Map;
 public class WhaleFilterService {
 
     private final WhaleTransactionRepository repository;
+    private final Web3IncidentRepository incidentRepository;
     private final SimpMessagingTemplate messagingTemplate;
     private final OkLinkLabelService labelService;
     private final WhaleWebSocketHandler whaleWebSocketHandler;
@@ -104,6 +108,7 @@ public class WhaleFilterService {
 
         WhaleTransaction saved = repository.save(whale);
         broadcast(saved);
+        createIncident(saved);
     }
 
     // BTC 지원 제거 — Ethereum Mainnet 전용으로 운영
@@ -125,14 +130,23 @@ public class WhaleFilterService {
         }
     }
 
-    /** 위험도 등급 산정 */
+    /** 위험도 등급 산정
+     *  OKLink 라벨 기반 + 금액 기반 복합 판정
+     *  OKLink 미설정 환경에서도 대량 이체는 HIGH 이상으로 분류됩니다.
+     */
     private String calculateRiskLevel(double amount, double threshold,
                                        OkLinkLabelService.LabelResult from,
                                        OkLinkLabelService.LabelResult to) {
         int weight = from.riskWeight() + to.riskWeight();
-        if (weight >= 2) return "CRITICAL";
-        if (weight == 1 || amount >= threshold * 10) return "HIGH";
-        if (amount >= threshold * 3) return "MEDIUM";
+
+        // OKLink 라벨 기반 판정
+        if (weight >= 2) return "CRITICAL";       // Hacker → Exchange 등
+        if (weight == 1) return "HIGH";            // 한 쪽이라도 위험 라벨
+
+        // 금액 기반 판정 (OKLink 없을 때도 동작)
+        if (amount >= threshold * 5) return "CRITICAL";   // 5,000 ETH 이상
+        if (amount >= threshold * 2) return "HIGH";        // 2,000 ETH 이상
+        if (amount >= threshold) return "MEDIUM";          // 1,000 ETH 이상 (기본)
         return "INFO";
     }
 
@@ -141,6 +155,71 @@ public class WhaleFilterService {
         whaleWebSocketHandler.broadcastWhaleEvent(tx);
         log.info("📡 WebSocket 전송: {} {} | {} → {} | Risk={}",
             tx.getAmount(), tx.getAssetSymbol(), tx.getFromLabel(), tx.getToLabel(), tx.getRiskLevel());
+    }
+
+    /**
+     * WhaleTransaction → Web3Incident 변환 후 저장 + ROC 대시보드 WebSocket 전송
+     * HIGH / CRITICAL 이상일 때만 인시던트로 등록합니다.
+     */
+    private void createIncident(WhaleTransaction tx) {
+        if ("INFO".equals(tx.getRiskLevel()) || "MEDIUM".equals(tx.getRiskLevel())) return;
+
+        // 중복 방지
+        if (incidentRepository.findByTxHash(tx.getTxHash()).isPresent()) return;
+
+        String incidentType = resolveIncidentType(tx);
+        boolean isCriticalExchange = tx.getToLabel() != null &&
+            (tx.getToLabel().toLowerCase().contains("binance") ||
+             tx.getToLabel().toLowerCase().contains("okx") ||
+             tx.getToLabel().toLowerCase().contains("hashkey") ||
+             tx.getToLabel().toLowerCase().contains("coinbase"));
+
+        Web3Incident incident = new Web3Incident();
+        incident.setTxHash(tx.getTxHash());
+        incident.setTitle(incidentType + ": " + (tx.getToLabel() != null ? tx.getToLabel() : "Unknown"));
+        incident.setDescription(String.format("%.1f ETH moved | %s → %s | Risk: %s",
+            tx.getAmount(),
+            tx.getFromLabel() != null ? tx.getFromLabel() : "Unknown",
+            tx.getToLabel()   != null ? tx.getToLabel()   : "Unknown",
+            tx.getRiskLevel()));
+        incident.setSeverity(Severity.valueOf(tx.getRiskLevel()));
+        incident.setStatus("NEW");
+        incident.setAmount(tx.getAmount());
+        incident.setAssetSymbol(tx.getAssetSymbol());
+        incident.setFromAddress(tx.getFromAddress());
+        incident.setChainName(tx.getChainName());
+        incident.setIncidentType(incidentType);
+        incident.setExchangeTag(tx.getToLabel());
+        incident.setCriticalExchange(isCriticalExchange);
+        incident.setRiskScore(riskScore(tx.getRiskLevel()));
+        incident.setPair("ETH/USDT");
+
+        Web3Incident saved = incidentRepository.save(incident);
+
+        // ROC 대시보드 WebSocket 채널로도 전송
+        messagingTemplate.convertAndSend("/topic/alerts", saved);
+        log.info("🚨 ROC 인시던트 생성: {} | {}", saved.getCaseId(), saved.getTitle());
+    }
+
+    private String resolveIncidentType(WhaleTransaction tx) {
+        if (tx.getToLabel() != null) {
+            String label = tx.getToLabel().toLowerCase();
+            if (label.contains("binance") || label.contains("okx") ||
+                label.contains("hashkey") || label.contains("coinbase") ||
+                label.contains("exchange")) return "Unusual Exchange Inflow";
+        }
+        if (tx.getFromLabel() != null && tx.getFromLabel().toLowerCase().contains("hack")) {
+            return "Whale Dump Detected";
+        }
+        return "Massive Whale Transfer";
+    }
+
+    private int riskScore(String riskLevel) {
+        return switch (riskLevel) {
+            case "CRITICAL" -> 90 + (int)(Math.random() * 10);
+            case "HIGH"     -> 70 + (int)(Math.random() * 20);
+            default         -> 50;
+        };
     }
 
     /** Map에서 여러 키 중 첫 번째로 찾은 값 반환 */
