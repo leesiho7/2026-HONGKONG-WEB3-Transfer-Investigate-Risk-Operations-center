@@ -285,677 +285,601 @@
      style="display:none"></div>
 
 <script>
+(function () {
 'use strict';
 
-// ── 전역 상태 ──────────────────────────────────────────────────────────
-const State = {
-    feedCount: 0,
-    ethVolume: 0,
-    btcVolume: 0,
-    criticalCount: parseInt(document.getElementById('roc-whale-data').getAttribute('data-critical')) || 0,
-    totalAlerts: 0,
-    activeFlows: 0,
-    threatLevel: 72,
+// ── 상태 ──────────────────────────────────────────────────────────────
+var _dataEl = document.getElementById('roc-whale-data');
+var State = {
+    feedCount:     0,
+    ethVolume:     0,
+    btcVolume:     0,
+    criticalCount: (_dataEl ? parseInt(_dataEl.getAttribute('data-critical'), 10) : 0) || 0,
+    totalAlerts:   0,
+    activeFlows:   0,
+    threatLevel:   72,
     selectedChain: 'eth',
-    flows: [],            // 현재 애니메이션 중인 flows
-    demoMode: true,       // QuickNode 미연결 시 데모 데이터 사용
+    flows:         [],
+    demoMode:      true,
 };
 
-// ── 세계 금융 허브 위치 (Canvas 900×450 기준 px) ───────────────────────
-// 대략적 Mercator 투영: x=(lon+180)/360*W, y=(90-lat)/180*H
-const HUBS = [
-    { id:'SFO', name:'San Francisco', x:0.11, y:0.34, region:'AMERICAS' },
-    { id:'NYC', name:'New York',      x:0.20, y:0.33, region:'AMERICAS' },
-    { id:'SAO', name:'São Paulo',     x:0.25, y:0.73, region:'AMERICAS' },
-    { id:'LON', name:'London',        x:0.45, y:0.24, region:'EMEA'    },
-    { id:'ZRH', name:'Zurich',        x:0.47, y:0.24, region:'EMEA'    },
-    { id:'DXB', name:'Dubai',         x:0.59, y:0.44, region:'EMEA'    },
-    { id:'MUM', name:'Mumbai',        x:0.63, y:0.50, region:'APAC'    },
-    { id:'SIN', name:'Singapore',     x:0.73, y:0.60, region:'APAC'    },
-    { id:'HKG', name:'Hong Kong',     x:0.77, y:0.45, region:'APAC'    },
-    { id:'TYO', name:'Tokyo',         x:0.83, y:0.36, region:'APAC'    },
-    { id:'SEO', name:'Seoul',         x:0.81, y:0.34, region:'APAC'    },
-    { id:'SYD', name:'Sydney',        x:0.84, y:0.75, region:'APAC'    },
+// ── 세계 금융 허브 위치 (normalized 0–1) ─────────────────────────────
+var HUBS = [
+    { id:'SFO', name:'San Francisco', x:0.11, y:0.34 },
+    { id:'NYC', name:'New York',      x:0.20, y:0.33 },
+    { id:'SAO', name:'Sao Paulo',     x:0.25, y:0.73 },
+    { id:'LON', name:'London',        x:0.45, y:0.24 },
+    { id:'ZRH', name:'Zurich',        x:0.47, y:0.24 },
+    { id:'DXB', name:'Dubai',         x:0.59, y:0.44 },
+    { id:'MUM', name:'Mumbai',        x:0.63, y:0.50 },
+    { id:'SIN', name:'Singapore',     x:0.73, y:0.60 },
+    { id:'HKG', name:'Hong Kong',     x:0.77, y:0.45 },
+    { id:'TYO', name:'Tokyo',         x:0.83, y:0.36 },
+    { id:'SEO', name:'Seoul',         x:0.81, y:0.34 },
+    { id:'SYD', name:'Sydney',        x:0.84, y:0.75 },
 ];
 
-// 간략화된 대륙 폴리곤 (x,y normalized 0-1)
-const CONTINENTS = [
-    // North America
+var CONTINENTS = [
     [[.06,.10],[.16,.08],[.22,.13],[.26,.18],[.28,.30],[.24,.40],[.20,.52],[.16,.62],[.12,.58],[.06,.46],[.04,.28]],
-    // South America
     [[.20,.56],[.26,.54],[.29,.58],[.30,.70],[.28,.84],[.24,.89],[.19,.84],[.17,.70],[.19,.62]],
-    // Europe
     [[.39,.12],[.46,.10],[.52,.12],[.54,.18],[.56,.24],[.52,.28],[.44,.28],[.40,.22],[.38,.16]],
-    // Africa
     [[.42,.28],[.52,.26],[.57,.30],[.58,.38],[.58,.52],[.55,.68],[.50,.80],[.44,.80],[.40,.68],[.38,.52],[.39,.36]],
-    // Asia
     [[.52,.10],[.62,.08],[.72,.08],[.80,.10],[.90,.16],[.94,.24],[.92,.38],[.86,.46],[.80,.52],[.74,.56],[.68,.58],[.65,.55],[.62,.52],[.58,.48],[.55,.42],[.52,.32],[.50,.20]],
-    // Australia
     [[.74,.65],[.82,.62],[.89,.66],[.90,.75],[.87,.82],[.80,.84],[.74,.78],[.73,.70]],
-    // Greenland
     [[.30,.04],[.38,.02],[.43,.06],[.41,.12],[.34,.14],[.28,.10]],
 ];
 
-// ── Canvas 초기화 ────────────────────────────────────────────────────
-// window.X 에 직접 할당 → DevTools 콘솔에서 canvas, W, H 로 즉시 접근 가능
-window.canvas = document.getElementById('threatMap');
-window.ctx    = window.canvas ? window.canvas.getContext('2d') : null;
-window.W = 0;
-window.H = 0;
-// 스크립트 내부 참조용 alias
-var canvas = window.canvas;
-var ctx    = window.ctx;
-var W      = window.W;
-var H      = window.H;
+// ── Canvas — 전역 변수 없음, getCvs()로만 참조 ────────────────────────
+var _cvs = null;
+var _ctx = null;
+var W = 0;
+var H = 0;
 
-if (!canvas) { console.error('[WHALE] <canvas id="threatMap"> 없음'); }
-if (!ctx)    { console.error('[WHALE] 2D context 획득 실패'); }
+function getCvs() {
+    if (!_cvs) { _cvs = document.getElementById('threatMap'); }
+    return _cvs;
+}
+function getCtx() {
+    if (!_ctx) { var c = getCvs(); _ctx = c ? c.getContext('2d') : null; }
+    return _ctx;
+}
 
 function resizeCanvas() {
-    if (!canvas) return;
-    // 컨테이너가 아직 flex 계산 전일 수 있으므로
-    // 뷰포트에서 직접 계산: feed(340px) + tools(280px) + borders(8px) = 628
-    // topbar(52) + ticker(22) + bottombar(42) = 116
-    var cont = canvas.parentElement;
-    var cw = cont.clientWidth  || cont.offsetWidth;
-    var ch = cont.clientHeight || cont.offsetHeight;
+    var c = getCvs();
+    if (!c) return;
+    var cont = c.parentElement;
+    if (!cont) return;
+    var cw = cont.clientWidth  || cont.offsetWidth  || 0;
+    var ch = cont.clientHeight || cont.offsetHeight || 0;
+    // flex 미계산(0 or 기본값) → 뷰포트에서 직접 계산
+    // feed(340) + tools(280) + borders(8) = 628 | topbar(52)+ticker(22)+bottombar(42) = 116
     var w = (cw > 300) ? cw : Math.max(window.innerWidth  - 628, 400);
     var h = (ch > 200) ? ch : Math.max(window.innerHeight - 116, 300);
     if (w !== W || h !== H) {
-        W = window.W = canvas.width  = w;
-        H = window.H = canvas.height = h;
+        W = c.width  = w;
+        H = c.height = h;
         positionHubLabels();
         console.log('[WHALE] Canvas 설정됨:', W, 'x', H);
     }
 }
 
 window.addEventListener('resize', resizeCanvas);
-
 try {
-    if (window.ResizeObserver && canvas) {
-        new ResizeObserver(resizeCanvas).observe(canvas.parentElement);
+    var _observeTarget = getCvs() && getCvs().parentElement;
+    if (window.ResizeObserver && _observeTarget) {
+        new ResizeObserver(resizeCanvas).observe(_observeTarget);
     }
-} catch(e) { /* ResizeObserver 미지원 무시 */ }
+} catch(e) {}
 
 // ── Hub Label Overlay ────────────────────────────────────────────────
 function positionHubLabels() {
-    const container = document.getElementById('hubLabels');
+    var container = document.getElementById('hubLabels');
+    if (!container) return;
     container.innerHTML = '';
-    HUBS.forEach(h => {
-        const el = document.createElement('div');
+    for (var i = 0; i < HUBS.length; i++) {
+        var h = HUBS[i];
+        var el = document.createElement('div');
         el.className = 'hub-label';
         el.textContent = h.id;
         el.style.left = (h.x * W) + 'px';
         el.style.top  = (h.y * H - 12) + 'px';
         container.appendChild(el);
-    });
+    }
 }
 
-// ── Canvas Render Loop ────────────────────────────────────────────────
+// ── Render Loop ───────────────────────────────────────────────────────
 var _drawWarnOnce = false;
 function drawFrame() {
-    if (!ctx) return;   // canvas 초기화 실패 시 즉시 중단
+    var ctx = getCtx();
+    if (!ctx) { requestAnimationFrame(drawFrame); return; }
     if (!W || !H) {
         resizeCanvas();
         if (!_drawWarnOnce) {
             _drawWarnOnce = true;
-            console.warn('[WHALE] drawFrame: W/H=0 대기 중... container=',
-                canvas.parentElement.clientWidth, 'x', canvas.parentElement.clientHeight);
+            var c = getCvs(), p = c && c.parentElement;
+            console.warn('[WHALE] drawFrame: W/H=0, container=',
+                p ? p.clientWidth : '?', 'x', p ? p.clientHeight : '?');
         }
         requestAnimationFrame(drawFrame);
         return;
     }
     _drawWarnOnce = false;
     ctx.clearRect(0, 0, W, H);
-    drawBackground();
-    drawContinents();
-    drawGrid();
-    drawRegionLabels();
-    drawFlows();
-    drawHubs();
+    drawBackground(ctx);
+    drawContinents(ctx);
+    drawGrid(ctx);
+    drawRegionLabels(ctx);
+    drawFlows(ctx);
+    drawHubs(ctx);
     requestAnimationFrame(drawFrame);
 }
 
-function drawBackground() {
-    // Radial gradient: dark blue center
-    const grad = ctx.createRadialGradient(W*0.5, H*0.5, 0, W*0.5, H*0.5, W*0.7);
-    grad.addColorStop(0, '#020e18');
-    grad.addColorStop(1, '#020608');
-    ctx.fillStyle = grad;
+function drawBackground(ctx) {
+    var g = ctx.createRadialGradient(W*0.5, H*0.5, 0, W*0.5, H*0.5, W*0.7);
+    g.addColorStop(0, '#020e18');
+    g.addColorStop(1, '#020608');
+    ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
 }
 
-function drawGrid() {
+function drawGrid(ctx) {
     ctx.strokeStyle = 'rgba(0,200,120,0.07)';
     ctx.lineWidth = 0.5;
-    const gridX = W / 24, gridY = H / 12;
-    for (let x = 0; x <= W; x += gridX) {
+    var gx = W / 24, gy = H / 12;
+    for (var x = 0; x <= W; x += gx) {
         ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
     }
-    for (let y = 0; y <= H; y += gridY) {
+    for (var y = 0; y <= H; y += gy) {
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
     }
-    // Equator & Prime Meridian
     ctx.strokeStyle = 'rgba(0,200,120,0.18)';
     ctx.lineWidth = 1;
-    const eq = H * 0.5;
     ctx.setLineDash([4, 8]);
-    ctx.beginPath(); ctx.moveTo(0, eq); ctx.lineTo(W, eq); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, H*0.5); ctx.lineTo(W, H*0.5); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(W*0.5, 0); ctx.lineTo(W*0.5, H); ctx.stroke();
     ctx.setLineDash([]);
 }
 
-function drawContinents() {
-    CONTINENTS.forEach(poly => {
+function drawContinents(ctx) {
+    for (var i = 0; i < CONTINENTS.length; i++) {
+        var poly = CONTINENTS[i];
         ctx.beginPath();
         ctx.moveTo(poly[0][0]*W, poly[0][1]*H);
-        for (let i=1; i<poly.length; i++) {
-            ctx.lineTo(poly[i][0]*W, poly[i][1]*H);
-        }
+        for (var j = 1; j < poly.length; j++) { ctx.lineTo(poly[j][0]*W, poly[j][1]*H); }
         ctx.closePath();
         ctx.fillStyle   = 'rgba(0,160,80,0.14)';
         ctx.strokeStyle = 'rgba(0,232,135,0.45)';
         ctx.lineWidth   = 1.0;
-        ctx.fill();
-        ctx.stroke();
-    });
+        ctx.fill(); ctx.stroke();
+    }
 }
 
-function drawRegionLabels() {
-    const regions = [
+function drawRegionLabels(ctx) {
+    var regions = [
         { label:'AMERICAS', x:0.14, y:0.88 },
         { label:'EMEA',     x:0.48, y:0.88 },
         { label:'APAC',     x:0.78, y:0.88 },
     ];
     ctx.font = '9px Monaco, Courier New, monospace';
     ctx.textAlign = 'center';
-    regions.forEach(r => {
+    for (var i = 0; i < regions.length; i++) {
         ctx.fillStyle = 'rgba(0,200,120,0.2)';
-        ctx.fillText(r.label, r.x*W, r.y*H);
-    });
+        ctx.fillText(regions[i].label, regions[i].x*W, regions[i].y*H);
+    }
     ctx.textAlign = 'left';
 }
 
-// ── Hubs ─────────────────────────────────────────────────────────────
-function drawHubs() {
-    const now = Date.now();
-    HUBS.forEach(h => {
-        const px = h.x * W, py = h.y * H;
-        const pulse = Math.sin(now / 1000 + h.x * 10) * 0.3 + 0.7;
-
-        // Outer glow
-        const grad = ctx.createRadialGradient(px, py, 0, px, py, 22);
-        grad.addColorStop(0, `rgba(0,232,135,${0.30 * pulse})`);
-        grad.addColorStop(1, 'transparent');
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.arc(px, py, 22, 0, Math.PI*2);
-        ctx.fill();
-
-        // Ring
-        ctx.beginPath();
-        ctx.arc(px, py, 6, 0, Math.PI*2);
-        ctx.strokeStyle = `rgba(0,232,135,${0.8 * pulse})`;
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-
-        // Core dot
-        ctx.beginPath();
-        ctx.arc(px, py, 3, 0, Math.PI*2);
-        ctx.fillStyle = `rgba(0,232,135,${pulse})`;
-        ctx.shadowColor = '#00e887';
-        ctx.shadowBlur = 12 * pulse;
-        ctx.fill();
-        ctx.shadowBlur = 0;
-    });
-}
-
-// ── Whale Flow Animations ─────────────────────────────────────────────
-class WhaleFlow {
-    constructor(fromHub, toHub, riskLevel, amount) {
-        this.from     = fromHub;
-        this.to       = toHub;
-        this.risk     = riskLevel;
-        this.amount   = amount;
-        this.progress = 0;
-        this.speed    = 0.004 + Math.random() * 0.003;
-        this.created  = Date.now();
-        this.lifespan = 7000; // ms
-        this.particles = [];
-        // Bezier control point (arc upward)
-        this.cpx = (fromHub.x + toHub.x) / 2 * W;
-        this.cpy = Math.min(fromHub.y, toHub.y) * H - H * 0.18;
-    }
-
-    riskColor() {
-        switch (this.risk) {
-            case 'CRITICAL': return '#ff3b3b';
-            case 'HIGH':     return '#ff8c00';
-            case 'MEDIUM':   return '#fbbf24';
-            default:         return '#00e887';
-        }
-    }
-
-    bezier(t) {
-        const x0 = this.from.x*W, y0 = this.from.y*H;
-        const x2 = this.to.x*W,   y2 = this.to.y*H;
-        const x = (1-t)*(1-t)*x0 + 2*(1-t)*t*this.cpx + t*t*x2;
-        const y = (1-t)*(1-t)*y0 + 2*(1-t)*t*this.cpy + t*t*y2;
-        return { x, y };
-    }
-
-    draw(ctx) {
-        // W/H가 바뀌어도(초기화 지연 or 리사이즈) 항상 현재 캔버스 기준으로 재계산
-        this.cpx = (this.from.x + this.to.x) / 2 * W;
-        this.cpy = Math.min(this.from.y, this.to.y) * H - H * 0.18;
-
-        const age     = Date.now() - this.created;
-        const opacity = Math.max(0, 1 - age / this.lifespan);
-        const color   = this.riskColor();
-
-        // Path line (trail behind particle)
-        ctx.beginPath();
-        const x0 = this.from.x*W, y0 = this.from.y*H;
-        ctx.moveTo(x0, y0);
-        const steps = 40;
-        const maxStep = Math.floor(this.progress * steps);
-        for (let i = 1; i <= maxStep; i++) {
-            const t = i / steps;
-            const p = this.bezier(t);
-            ctx.lineTo(p.x, p.y);
-        }
-        ctx.strokeStyle = `${color}${Math.floor(opacity * 90).toString(16).padStart(2,'0')}`;
-        ctx.lineWidth = 2;
-        ctx.shadowColor = color;
-        ctx.shadowBlur = 8;
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-
-        // Moving particle head
-        if (this.progress > 0) {
-            const pos = this.bezier(this.progress);
-            // Glow
-            const g = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, 8);
-            g.addColorStop(0, color + 'cc');
-            g.addColorStop(1, 'transparent');
-            ctx.fillStyle = g;
-            ctx.beginPath(); ctx.arc(pos.x, pos.y, 8, 0, Math.PI*2); ctx.fill();
-            // Core
-            ctx.beginPath(); ctx.arc(pos.x, pos.y, 3, 0, Math.PI*2);
-            ctx.fillStyle = color;
-            ctx.shadowColor = color; ctx.shadowBlur = 10;
-            ctx.fill(); ctx.shadowBlur = 0;
-        }
-
-        this.progress = Math.min(1, this.progress + this.speed);
-        return opacity > 0;
+function drawHubs(ctx) {
+    var now = Date.now();
+    for (var i = 0; i < HUBS.length; i++) {
+        var h = HUBS[i];
+        var px = h.x * W, py = h.y * H;
+        var pulse = Math.sin(now / 1000 + h.x * 10) * 0.3 + 0.7;
+        var g = ctx.createRadialGradient(px, py, 0, px, py, 22);
+        g.addColorStop(0, 'rgba(0,232,135,' + (0.30 * pulse).toFixed(2) + ')');
+        g.addColorStop(1, 'transparent');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(px, py, 22, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI*2);
+        ctx.strokeStyle = 'rgba(0,232,135,' + (0.8 * pulse).toFixed(2) + ')';
+        ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.beginPath(); ctx.arc(px, py, 3, 0, Math.PI*2);
+        ctx.fillStyle = 'rgba(0,232,135,' + pulse.toFixed(2) + ')';
+        ctx.shadowColor = '#00e887'; ctx.shadowBlur = 12 * pulse;
+        ctx.fill(); ctx.shadowBlur = 0;
     }
 }
 
-function drawFlows() {
-    State.flows = State.flows.filter(f => f.draw(ctx));
-    document.getElementById('barFlows').textContent = State.flows.length;
-    document.getElementById('mapFlowCount').textContent = `${State.flows.length} flows tracked`;
+// ── WhaleFlow ─────────────────────────────────────────────────────────
+function WhaleFlow(fromHub, toHub, riskLevel, amount) {
+    this.from     = fromHub;
+    this.to       = toHub;
+    this.risk     = riskLevel;
+    this.amount   = amount;
+    this.progress = 0;
+    this.speed    = 0.004 + Math.random() * 0.003;
+    this.created  = Date.now();
+    this.lifespan = 7000;
+    this.cpx = (fromHub.x + toHub.x) / 2 * W;
+    this.cpy = Math.min(fromHub.y, toHub.y) * H - H * 0.18;
+}
+WhaleFlow.prototype.riskColor = function () {
+    if (this.risk === 'CRITICAL') return '#ff3b3b';
+    if (this.risk === 'HIGH')     return '#ff8c00';
+    if (this.risk === 'MEDIUM')   return '#fbbf24';
+    return '#00e887';
+};
+WhaleFlow.prototype.bezier = function (t) {
+    var x0 = this.from.x*W, y0 = this.from.y*H;
+    var x2 = this.to.x*W,   y2 = this.to.y*H;
+    return {
+        x: (1-t)*(1-t)*x0 + 2*(1-t)*t*this.cpx + t*t*x2,
+        y: (1-t)*(1-t)*y0 + 2*(1-t)*t*this.cpy + t*t*y2
+    };
+};
+WhaleFlow.prototype.draw = function (ctx) {
+    this.cpx = (this.from.x + this.to.x) / 2 * W;
+    this.cpy = Math.min(this.from.y, this.to.y) * H - H * 0.18;
+    var age     = Date.now() - this.created;
+    var opacity = Math.max(0, 1 - age / this.lifespan);
+    var color   = this.riskColor();
+    ctx.beginPath();
+    ctx.moveTo(this.from.x*W, this.from.y*H);
+    var steps = 40, maxStep = Math.floor(this.progress * steps);
+    for (var i = 1; i <= maxStep; i++) {
+        var p = this.bezier(i / steps);
+        ctx.lineTo(p.x, p.y);
+    }
+    var ah = Math.floor(opacity * 144).toString(16);
+    if (ah.length < 2) ah = '0' + ah;
+    ctx.strokeStyle = color + ah;
+    ctx.lineWidth = 2;
+    ctx.shadowColor = color; ctx.shadowBlur = 8;
+    ctx.stroke(); ctx.shadowBlur = 0;
+    if (this.progress > 0) {
+        var pos = this.bezier(this.progress);
+        var g = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, 8);
+        g.addColorStop(0, color + 'cc'); g.addColorStop(1, 'transparent');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(pos.x, pos.y, 8, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(pos.x, pos.y, 3, 0, Math.PI*2);
+        ctx.fillStyle = color;
+        ctx.shadowColor = color; ctx.shadowBlur = 10;
+        ctx.fill(); ctx.shadowBlur = 0;
+    }
+    this.progress = Math.min(1, this.progress + this.speed);
+    return opacity > 0;
+};
+
+function drawFlows(ctx) {
+    State.flows = State.flows.filter(function(f) { return f.draw(ctx); });
+    var bf = document.getElementById('barFlows');
+    var mf = document.getElementById('mapFlowCount');
+    if (bf) bf.textContent = State.flows.length;
+    if (mf) mf.textContent = State.flows.length + ' flows tracked';
 }
 
 function addWhaleFlow(fromId, toId, riskLevel, amount) {
-    const from = HUBS.find(h => h.id === fromId) || HUBS[Math.floor(Math.random()*HUBS.length)];
-    const to   = HUBS.find(h => h.id === toId)   || HUBS[Math.floor(Math.random()*HUBS.length)];
+    var from = null, to = null;
+    for (var i = 0; i < HUBS.length; i++) {
+        if (HUBS[i].id === fromId) from = HUBS[i];
+        if (HUBS[i].id === toId)   to   = HUBS[i];
+    }
+    if (!from) from = HUBS[Math.floor(Math.random()*HUBS.length)];
+    if (!to)   to   = HUBS[Math.floor(Math.random()*HUBS.length)];
     if (from.id === to.id) return;
     State.flows.push(new WhaleFlow(from, to, riskLevel, amount));
-    // Max 15 concurrent flows
     if (State.flows.length > 15) State.flows.shift();
 }
 
-// ── Risk Level → Hub 매핑 ─────────────────────────────────────────────
+// ── 라벨 → Hub ID 매핑 ────────────────────────────────────────────────
 function labelToHub(label) {
     if (!label) return null;
-    const l = label.toLowerCase();
-    if (l.includes('binance')) return 'SIN';
-    if (l.includes('okx') || l.includes('okex')) return 'HKG';
-    if (l.includes('hashkey')) return 'HKG';
-    if (l.includes('coinbase')) return 'SFO';
-    if (l.includes('kraken')) return 'SFO';
-    if (l.includes('bybit')) return 'SIN';
-    if (l.includes('huobi') || l.includes('htx')) return 'HKG';
-    if (l.includes('kucoin')) return 'SIN';
-    if (l.includes('upbit')) return 'SEO';
-    if (l.includes('dubai') || l.includes('uae')) return 'DXB';
+    var l = label.toLowerCase();
+    if (l.indexOf('binance')  >= 0) return 'SIN';
+    if (l.indexOf('okx')      >= 0 || l.indexOf('okex') >= 0) return 'HKG';
+    if (l.indexOf('hashkey')  >= 0) return 'HKG';
+    if (l.indexOf('huobi')    >= 0 || l.indexOf('htx') >= 0)  return 'HKG';
+    if (l.indexOf('coinbase') >= 0) return 'SFO';
+    if (l.indexOf('kraken')   >= 0) return 'SFO';
+    if (l.indexOf('bybit')    >= 0) return 'SIN';
+    if (l.indexOf('kucoin')   >= 0) return 'SIN';
+    if (l.indexOf('upbit')    >= 0 || l.indexOf('bithumb') >= 0) return 'SEO';
+    if (l.indexOf('dubai')    >= 0 || l.indexOf('uae') >= 0)  return 'DXB';
+    if (l.indexOf('london')   >= 0) return 'LON';
     return null;
 }
 
-// ── WebSocket ────────────────────────────────────────────────────────
-let wsConnected = false;
+function randomHub() {
+    return HUBS[Math.floor(Math.random() * HUBS.length)];
+}
 
+// ── WebSocket ─────────────────────────────────────────────────────────
 function connectWebSocket() {
-    const socket = new SockJS('/ws-roc', null, { transports: ['websocket'] });
-    const stomp  = Stomp.over(socket);
-    stomp.debug   = null;
+    var socket = new SockJS('/ws-roc', null, { transports: ['websocket'] });
+    var stomp  = Stomp.over(socket);
+    stomp.debug = null;
 
-    stomp.connect({}, frame => {
-        wsConnected = true;
-        document.getElementById('wsStatus').textContent    = '● CONNECTED';
-        document.getElementById('wsStatus').style.color    = 'var(--green)';
-        document.getElementById('barStream').textContent   = 'CONNECTED';
-        console.log('🐋 Whale Alert WebSocket 연결됨');
+    stomp.connect({}, function () {
+        var ws = document.getElementById('wsStatus');
+        var bs = document.getElementById('barStream');
+        if (ws) { ws.textContent = '● CONNECTED'; ws.style.color = 'var(--green)'; }
+        if (bs) bs.textContent = 'CONNECTED';
+        console.log('[WHALE] WebSocket 연결됨');
 
-        // 고래 트랜잭션 구독 (QuickNode 실데이터)
-        stomp.subscribe('/topic/whale-alerts', msg => {
-            // 첫 실데이터 수신 시 데모 모드 즉시 비활성화
+        stomp.subscribe('/topic/whale-alerts', function (msg) {
             if (State.demoMode) {
                 State.demoMode = false;
-                console.log('🟢 QuickNode 실데이터 수신 — 데모 모드 비활성화');
-                document.getElementById('mapStatus').textContent = '● LIVE: QUICKNODE DATA';
+                console.log('[WHALE] 실데이터 수신 — 데모 모드 비활성화');
+                var ms = document.getElementById('mapStatus');
+                if (ms) ms.textContent = '● LIVE: QUICKNODE DATA';
             }
-            const whale = JSON.parse(msg.body);
-            handleWhaleAlert(whale);
+            handleWhaleAlert(JSON.parse(msg.body));
         });
 
-        // ROC 인시던트 알림 (서버 시뮬레이션 포함)
-        stomp.subscribe('/topic/alerts', msg => {
-            const incident = JSON.parse(msg.body);
-            if (incident.amount > 100) {
+        stomp.subscribe('/topic/alerts', function (msg) {
+            var inc = JSON.parse(msg.body);
+            if (inc.amount > 100) {
                 addWhaleFlow(
-                    labelToHub(incident.exchangeTag) || 'NYC',
-                    labelToHub(incident.exchangeTag) || 'HKG',
-                    incident.severity,
-                    incident.amount
+                    labelToHub(inc.exchangeTag) || 'NYC',
+                    labelToHub(inc.exchangeTag) || 'HKG',
+                    inc.severity, inc.amount
                 );
             }
         });
 
-    }, err => {
-        wsConnected = false;
-        document.getElementById('wsStatus').textContent = '● RECONNECTING';
-        document.getElementById('wsStatus').style.color = 'var(--orange)';
+    }, function () {
+        var ws = document.getElementById('wsStatus');
+        if (ws) { ws.textContent = '● RECONNECTING'; ws.style.color = 'var(--orange)'; }
         setTimeout(connectWebSocket, 3000);
     });
 }
 
 // ── 고래 알림 처리 ────────────────────────────────────────────────────
 function handleWhaleAlert(whale) {
-    // 1. 피드 카드 추가
     addFeedCard(whale);
 
-    // 2. 세계 지도에 flow 추가 (서버가 fromHub/toHub를 보내면 우선 사용)
-    const fromHub = whale.fromHub || labelToHub(whale.fromLabel) || randomHub().id;
-    const toHub   = whale.toHub   || labelToHub(whale.toLabel)   || randomHub().id;
+    var fromHub = whale.fromHub || labelToHub(whale.fromLabel) || randomHub().id;
+    var toHub   = whale.toHub   || labelToHub(whale.toLabel)   || randomHub().id;
     addWhaleFlow(fromHub, toHub, whale.riskLevel, whale.amount);
 
-    // 3. CRITICAL이면 border flash + toast
-    if (whale.riskLevel === 'CRITICAL') {
-        flashThreat();
-        showToast(whale, true);
-    } else if (whale.riskLevel === 'HIGH') {
-        showToast(whale, false);
-    }
+    if (whale.riskLevel === 'CRITICAL') { flashThreat(); showToast(whale, true); }
+    else if (whale.riskLevel === 'HIGH') { showToast(whale, false); }
 
-    // 4. 볼륨 업데이트
     State.ethVolume += whale.amount || 0;
-    const barEth = document.getElementById('barEthVol');
+    var barEth = document.getElementById('barEthVol');
     if (barEth) barEth.textContent = formatNum(State.ethVolume) + ' ETH';
+
     if (whale.riskLevel === 'CRITICAL') {
         State.criticalCount++;
-        document.getElementById('barCritical').textContent = State.criticalCount;
+        var bc = document.getElementById('barCritical');
+        if (bc) bc.textContent = State.criticalCount;
     }
 
-    // 5. 마지막 이벤트 레이블
-    document.getElementById('lastEventLabel').textContent =
-        `Last: ${whale.assetSymbol} ${formatNum(whale.amount)} → ${whale.toLabel || 'Unknown'}`;
+    var le = document.getElementById('lastEventLabel');
+    if (le) le.textContent = 'Last: ' + (whale.assetSymbol||'ETH') + ' ' + formatNum(whale.amount) + ' \u2192 ' + (whale.toLabel||'Unknown');
 
-    // 6. 카운터 갱신
-    State.feedCount++;
-    State.totalAlerts++;
-    document.getElementById('feedCount').textContent = State.feedCount + ' ALERTS';
-    document.getElementById('totalAlerts').textContent = State.totalAlerts;
+    State.feedCount++; State.totalAlerts++;
+    var fc = document.getElementById('feedCount'), ta = document.getElementById('totalAlerts');
+    if (fc) fc.textContent = State.feedCount + ' ALERTS';
+    if (ta) ta.textContent = State.totalAlerts;
 
-    // 7. 위협 수준 동적 갱신
     updateThreatLevel(whale.riskLevel);
-
-    // 8. Activity heatmap 갱신
     updateActivityGrid();
-
-    // 9. Ticker 추가
     addTickerItem(whale);
+    updateVolumeChart(whale);
 }
 
-// ── Feed Card DOM ─────────────────────────────────────────────────────
+// ── Feed Card ─────────────────────────────────────────────────────────
 function addFeedCard(whale) {
-    const feed = document.getElementById('whaleFeed');
-    const risk = (whale.riskLevel || 'info').toLowerCase();
-    const fromAddr = whale.fromAddress ? whale.fromAddress.substring(0,10)+'...' : 'unknown';
-    const toAddr   = whale.toAddress   ? whale.toAddress.substring(0,10)+'...'   : 'unknown';
-    const usdVal   = whale.amountUsd   ? '≈ $' + formatMoney(whale.amountUsd)    : '';
-    const fromPill = makeLabelPill(whale.fromLabel, whale.fromLabelType);
-    const toPill   = makeLabelPill(whale.toLabel,   whale.toLabelType);
-    const chainPill= `<span class="label-pill chain-${(whale.assetSymbol||'eth').toLowerCase()}">${whale.assetSymbol||'ETH'}</span>`;
-
-    const html = `
-    <div class="whale-card ${risk}">
-        <div class="whale-card-top">
-            <div class="whale-amount">${formatNum(whale.amount)} ${whale.assetSymbol||'ETH'}</div>
-            <div class="whale-card-meta">
-                <span class="risk-badge ${risk}">${whale.riskLevel||'INFO'}</span>
-                <span class="whale-time">JUST NOW</span>
-            </div>
-        </div>
-        <div class="whale-flow">
-            <span class="addr">${fromAddr}</span>
-            <span class="arrow">→</span>
-            <span class="addr">${toAddr}</span>
-        </div>
-        <div class="label-pills">
-            ${chainPill}
-            ${fromPill}
-            ${toPill}
-        </div>
-        ${usdVal ? `<div class="usd-val">${usdVal}</div>` : ''}
-    </div>`;
-
+    var feed = document.getElementById('whaleFeed');
+    if (!feed) return;
+    var risk     = (whale.riskLevel || 'info').toLowerCase();
+    var fromAddr = whale.fromAddress ? whale.fromAddress.substring(0,10)+'...' : 'unknown';
+    var toAddr   = whale.toAddress   ? whale.toAddress.substring(0,10)+'...'   : 'unknown';
+    var usdVal   = whale.amountUsd   ? '\u2248 $' + formatMoney(whale.amountUsd) : '';
+    var sym      = whale.assetSymbol || 'ETH';
+    var chainPill = '<span class="label-pill chain-' + sym.toLowerCase() + '">' + sym + '</span>';
+    var html = '<div class="whale-card ' + risk + '">'
+        + '<div class="whale-card-top">'
+        + '<div class="whale-amount">' + formatNum(whale.amount) + ' ' + sym + '</div>'
+        + '<div class="whale-card-meta">'
+        + '<span class="risk-badge ' + risk + '">' + (whale.riskLevel||'INFO') + '</span>'
+        + '<span class="whale-time">JUST NOW</span>'
+        + '</div></div>'
+        + '<div class="whale-flow"><span class="addr">' + fromAddr + '</span>'
+        + '<span class="arrow">\u2192</span>'
+        + '<span class="addr">' + toAddr + '</span></div>'
+        + '<div class="label-pills">' + chainPill
+        + makeLabelPill(whale.fromLabel, whale.fromLabelType)
+        + makeLabelPill(whale.toLabel,   whale.toLabelType) + '</div>'
+        + (usdVal ? '<div class="usd-val">' + usdVal + '</div>' : '')
+        + '</div>';
     feed.insertAdjacentHTML('afterbegin', html);
-
-    // 최대 50개 카드 유지
-    const cards = feed.querySelectorAll('.whale-card');
+    var cards = feed.querySelectorAll('.whale-card');
     if (cards.length > 50) cards[cards.length-1].remove();
 }
 
 function makeLabelPill(label, type) {
     if (!label || label === 'Unknown') return '';
-    const cls = (type || 'unknown').toLowerCase();
-    return `<span class="label-pill ${cls}">${label}</span>`;
+    return '<span class="label-pill ' + (type||'unknown').toLowerCase() + '">' + label + '</span>';
 }
 
-// ── Threat Flash ──────────────────────────────────────────────────────
+// ── Threat Flash & Toast ──────────────────────────────────────────────
 function flashThreat() {
-    const el = document.getElementById('threatFlash');
-    el.classList.remove('active');
-    void el.offsetWidth; // reflow
-    el.classList.add('active');
+    var el = document.getElementById('threatFlash');
+    if (!el) return;
+    el.classList.remove('active'); void el.offsetWidth; el.classList.add('active');
 }
 
-// ── Toast ─────────────────────────────────────────────────────────────
 function showToast(whale, isCritical) {
-    const container = document.getElementById('toastContainer');
-    const div = document.createElement('div');
-    div.className = `toast ${isCritical ? 'critical' : ''}`;
-    div.innerHTML = `
-        <div style="font-weight:700;margin-bottom:4px;color:${isCritical ? 'var(--red)' : 'var(--orange)'}">
-            ${isCritical ? '🚨' : '⚠️'} ${whale.riskLevel} WHALE DETECTED
-        </div>
-        <div>${formatNum(whale.amount)} ${whale.assetSymbol} → ${whale.toLabel || 'Unknown'}</div>
-        <div style="font-size:9px;color:var(--text-3);margin-top:2px;">${whale.txHash ? whale.txHash.substring(0,20)+'...' : ''}</div>`;
+    var container = document.getElementById('toastContainer');
+    if (!container) return;
+    var div = document.createElement('div');
+    div.className = 'toast' + (isCritical ? ' critical' : '');
+    div.innerHTML = '<div style="font-weight:700;margin-bottom:4px;color:' + (isCritical ? 'var(--red)' : 'var(--orange)') + '">'
+        + (isCritical ? '🚨' : '⚠️') + ' ' + whale.riskLevel + ' WHALE DETECTED</div>'
+        + '<div>' + formatNum(whale.amount) + ' ' + (whale.assetSymbol||'ETH') + ' \u2192 ' + (whale.toLabel||'Unknown') + '</div>'
+        + (whale.txHash ? '<div style="font-size:9px;color:var(--text-3);margin-top:2px;">' + whale.txHash.substring(0,20) + '...</div>' : '');
     container.appendChild(div);
-    setTimeout(() => div.remove(), 5000);
+    setTimeout(function() { div.remove(); }, 5000);
 }
 
 // ── Threat Level Meter ────────────────────────────────────────────────
 function updateThreatLevel(riskLevel) {
-    const bump = { CRITICAL: 5, HIGH: 2, MEDIUM: 1, INFO: 0 }[riskLevel] || 0;
+    var bump = { CRITICAL: 5, HIGH: 2, MEDIUM: 1, INFO: 0 }[riskLevel] || 0;
     State.threatLevel = Math.min(99, State.threatLevel + bump);
-    // Slow decay
-    setTimeout(() => { State.threatLevel = Math.max(40, State.threatLevel - 1); updateThreatUI(); }, 30000);
+    setTimeout(function() { State.threatLevel = Math.max(40, State.threatLevel - 1); updateThreatUI(); }, 30000);
     updateThreatUI();
 }
-
 function updateThreatUI() {
-    const pct = State.threatLevel;
-    document.getElementById('threatPct').textContent = pct;
-    document.getElementById('threatFill').style.width = pct + '%';
-    const big = document.getElementById('threatPct');
-    if (pct >= 80) { big.className='big-num red'; document.getElementById('statThreat').textContent='CRITICAL'; }
-    else if (pct >= 60) { big.className='big-num orange'; document.getElementById('statThreat').textContent='HIGH'; }
-    else { big.className='big-num green'; document.getElementById('statThreat').textContent='MEDIUM'; }
+    var pct = State.threatLevel;
+    var tp = document.getElementById('threatPct'), tf = document.getElementById('threatFill'), st = document.getElementById('statThreat');
+    if (tp) tp.textContent = pct;
+    if (tf) tf.style.width = pct + '%';
+    if (tp) {
+        if (pct >= 80)      { tp.className = 'big-num red';    if (st) st.textContent = 'CRITICAL'; }
+        else if (pct >= 60) { tp.className = 'big-num orange'; if (st) st.textContent = 'HIGH'; }
+        else                { tp.className = 'big-num green';  if (st) st.textContent = 'MEDIUM'; }
+    }
 }
 
 // ── Activity Heatmap ──────────────────────────────────────────────────
-const activityData = new Array(12).fill(0);
-let activityPointer = new Date().getHours() % 12;
-
+var activityData    = new Array(12).fill(0);
+var activityPointer = new Date().getHours() % 12;
 function updateActivityGrid() {
     activityData[activityPointer] = Math.min(activityData[activityPointer] + 1, 8);
     renderActivityGrid();
 }
-
 function renderActivityGrid() {
-    const grid = document.getElementById('activityGrid');
+    var grid = document.getElementById('activityGrid');
+    if (!grid) return;
     grid.innerHTML = '';
-    activityData.forEach(v => {
-        const cell = document.createElement('div');
+    for (var i = 0; i < activityData.length; i++) {
+        var v = activityData[i];
+        var cell = document.createElement('div');
         cell.className = 'activity-cell ' + (v === 0 ? '' : v <= 2 ? 'l1' : v <= 4 ? 'l2' : v <= 6 ? 'l3' : 'l4');
         grid.appendChild(cell);
-    });
+    }
 }
 
-// ── Volume Chart (Chart.js) ───────────────────────────────────────────
-const volCtx   = document.getElementById('volumeChart').getContext('2d');
-const volHours = Array.from({length:12}, (_,i)=> `${i*2}h`);
-const volData  = { eth: new Array(12).fill(0), btc: new Array(12).fill(0) };
-
-let volumeChart = null;
-try { volumeChart = new Chart(volCtx, {
-    type: 'bar',
-    data: {
-        labels: volHours,
-        datasets: [
-            {
-                label: 'ETH (×1K)',
-                data: volData.eth,
-                backgroundColor: 'rgba(98,126,234,0.5)',
-                borderColor: '#627eea',
-                borderWidth: 1,
-                borderRadius: 2,
+// ── Volume Chart ──────────────────────────────────────────────────────
+var volHours = [];
+for (var _vi = 0; _vi < 12; _vi++) { volHours.push(_vi*2 + 'h'); }
+var volData = { eth: new Array(12).fill(0), btc: new Array(12).fill(0) };
+var volumeChart = null;
+try {
+    var _volEl = document.getElementById('volumeChart');
+    if (_volEl) {
+        volumeChart = new Chart(_volEl.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: volHours,
+                datasets: [
+                    { label:'ETH (x1K)', data: volData.eth, backgroundColor:'rgba(98,126,234,0.5)', borderColor:'#627eea', borderWidth:1, borderRadius:2 },
+                    { label:'BTC',       data: volData.btc, backgroundColor:'rgba(247,147,26,0.5)',  borderColor:'#f7931a', borderWidth:1, borderRadius:2 }
+                ]
             },
-            {
-                label: 'BTC',
-                data: volData.btc,
-                backgroundColor: 'rgba(247,147,26,0.5)',
-                borderColor: '#f7931a',
-                borderWidth: 1,
-                borderRadius: 2,
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                animation: { duration: 500 },
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color:'#445850', font:{size:8} }, grid: { color:'rgba(0,200,120,0.05)' } },
+                    y: { ticks: { color:'#445850', font:{size:8} }, grid: { color:'rgba(0,200,120,0.05)' }, beginAtZero: true }
+                }
             }
-        ]
-    },
-    options: {
-        responsive: true, maintainAspectRatio: false,
-        animation: { duration: 500 },
-        plugins: { legend: { display: false } },
-        scales: {
-            x: { ticks: { color:'#445850', font:{size:8} }, grid: { color:'rgba(0,200,120,0.05)' } },
-            y: { ticks: { color:'#445850', font:{size:8} }, grid: { color:'rgba(0,200,120,0.05)' }, beginAtZero: true }
-        }
+        });
     }
-}); } catch(e) { console.warn('Chart.js 로드 실패 — 볼륨 차트 비활성화:', e); }
+} catch(e) { console.warn('[WHALE] Chart.js 초기화 실패:', e); }
 
 function updateVolumeChart(whale) {
     if (!volumeChart) return;
-    const hour = new Date().getHours();
-    const idx  = Math.floor(hour / 2);
-    if (whale.assetSymbol === 'ETH') {
-        volData.eth[idx] = (volData.eth[idx] || 0) + (whale.amount / 1000);
+    var idx = Math.floor(new Date().getHours() / 2);
+    if ((whale.assetSymbol||'ETH') === 'ETH') {
+        volData.eth[idx] = (volData.eth[idx] || 0) + ((whale.amount||0) / 1000);
     } else {
-        volData.btc[idx] = (volData.btc[idx] || 0) + (whale.amount || 0);
+        volData.btc[idx] = (volData.btc[idx] || 0) + (whale.amount||0);
     }
-    volumeChart.data.datasets[0].data = [...volData.eth];
-    volumeChart.data.datasets[1].data = [...volData.btc];
+    volumeChart.data.datasets[0].data = volData.eth.slice();
+    volumeChart.data.datasets[1].data = volData.btc.slice();
     volumeChart.update('active');
 }
 
 // ── Address Lookup ────────────────────────────────────────────────────
 function selectChain(chain) {
     State.selectedChain = chain;
-    document.getElementById('btnEth').className = 'chain-btn eth' + (chain === 'eth' ? ' active' : '');
-    document.getElementById('btnBtc').className = 'chain-btn btc' + (chain === 'btc' ? ' active' : '');
+    var eb = document.getElementById('btnEth'), bb = document.getElementById('btnBtc');
+    if (eb) eb.className = 'chain-btn eth' + (chain === 'eth' ? ' active' : '');
+    if (bb) bb.className = 'chain-btn btc' + (chain === 'btc' ? ' active' : '');
 }
 
-async function performLookup() {
-    const addr = document.getElementById('lookupAddr').value.trim();
+function performLookup() {
+    var addrEl = document.getElementById('lookupAddr');
+    if (!addrEl) return;
+    var addr = addrEl.value.trim();
     if (!addr) return;
+    var spinner = document.getElementById('lookupSpinner');
+    var result  = document.getElementById('lookupResult');
+    if (spinner) spinner.style.display = 'block';
+    if (result)  result.classList.remove('show');
+    var chain = State.selectedChain;
 
-    const spinner = document.getElementById('lookupSpinner');
-    const result  = document.getElementById('lookupResult');
-    spinner.style.display = 'block';
-    result.classList.remove('show');
-
-    try {
-        // 1. OKLink API 호출
-        const res = await fetch(`/api/whale/label?address=${encodeURIComponent(addr)}&chain=${State.selectedChain}`);
-        const data = await res.json();
-
-        // 2. 데모: 알려진 주소 하드코딩 결과
-        const knownLabels = {
-            '0x28c6c06298d514db089934071355e5743bf21d60': { label:'Binance Hot Wallet', type:'Exchange', risk:'HIGH' },
-            '0x6cc5f688a315f3dc28a7781717a9a798a59fda7b': { label:'OKX Hot Wallet',     type:'Exchange', risk:'HIGH' },
-            '0xbe0eb53f46cd790cd13851d5eff43d12404d33e8': { label:'Binance Cold Wallet', type:'ColdWallet', risk:'LOW' },
-            '0x1db3439a222c519ab44bb1144fc28167b4fa6ee6': { label:'Vitalik Buterin',    type:'Whale',    risk:'MEDIUM' },
-        };
-        const known = knownLabels[addr.toLowerCase()];
-        const labelData = known || { label: data.label || 'Unknown', type: data.type || 'Unknown', risk: 'UNKNOWN' };
-
-        document.getElementById('lrAddr').textContent  = addr.substring(0,20) + '...';
-        document.getElementById('lrLabel').textContent = labelData.label;
-        document.getElementById('lrType').innerHTML = `<span class="label-pill ${(labelData.type||'unknown').toLowerCase()}">${labelData.type}</span>`;
-        document.getElementById('lrRisk').innerHTML = `<span class="risk-badge ${(labelData.risk||'info').toLowerCase()}">Risk: ${labelData.risk}</span>`;
-
-        result.classList.add('show');
-
-        // 맵에 표시
-        const hub = labelToHub(labelData.label) || 'HKG';
-        addWhaleFlow(randomHub().id, hub, labelData.risk, 0);
-
-    } catch (e) {
-        document.getElementById('lrLabel').textContent = 'Lookup failed';
-        result.classList.add('show');
-    } finally {
-        spinner.style.display = 'none';
-    }
+    fetch('/api/whale/label?address=' + encodeURIComponent(addr) + '&chain=' + chain)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var known = {
+                '0x28c6c06298d514db089934071355e5743bf21d60': { label:'Binance Hot Wallet',  type:'Exchange',   risk:'HIGH'   },
+                '0x6cc5f688a315f3dc28a7781717a9a798a59fda7b': { label:'OKX Hot Wallet',      type:'Exchange',   risk:'HIGH'   },
+                '0xbe0eb53f46cd790cd13851d5eff43d12404d33e8': { label:'Binance Cold Wallet', type:'ColdWallet', risk:'LOW'    },
+                '0x1db3439a222c519ab44bb1144fc28167b4fa6ee6': { label:'Vitalik Buterin',     type:'Whale',      risk:'MEDIUM' },
+            };
+            var ld = known[addr.toLowerCase()] || { label: data.label||'Unknown', type: data.type||'Unknown', risk:'UNKNOWN' };
+            var la = document.getElementById('lrAddr'), ll = document.getElementById('lrLabel');
+            var lt = document.getElementById('lrType'), lr = document.getElementById('lrRisk');
+            if (la) la.textContent = addr.substring(0,20) + '...';
+            if (ll) ll.textContent = ld.label;
+            if (lt) lt.innerHTML = '<span class="label-pill ' + (ld.type||'unknown').toLowerCase() + '">' + ld.type + '</span>';
+            if (lr) lr.innerHTML = '<span class="risk-badge ' + (ld.risk||'info').toLowerCase() + '">Risk: ' + ld.risk + '</span>';
+            if (result) result.classList.add('show');
+            addWhaleFlow(randomHub().id, labelToHub(ld.label) || 'HKG', ld.risk, 0);
+        })
+        .catch(function() {
+            var ll = document.getElementById('lrLabel');
+            if (ll) ll.textContent = 'Lookup failed';
+            if (result) result.classList.add('show');
+        })
+        .finally(function() {
+            if (spinner) spinner.style.display = 'none';
+        });
 }
 
-document.getElementById('lookupAddr').addEventListener('keydown', e => {
-    if (e.key === 'Enter') performLookup();
-});
+var _la = document.getElementById('lookupAddr');
+if (_la) { _la.addEventListener('keydown', function(e) { if (e.key === 'Enter') performLookup(); }); }
 
 // ── Ticker ────────────────────────────────────────────────────────────
 function addTickerItem(whale) {
-    const inner = document.getElementById('tickerInner');
-    const item  = document.createElement('span');
+    var inner = document.getElementById('tickerInner');
+    if (!inner) return;
+    var item = document.createElement('span');
     item.className = 'ticker-item';
-    item.innerHTML = `WHALE: <span class="${whale.riskLevel === 'CRITICAL' ? 't-down' : 't-up'}">${formatNum(whale.amount)} ${whale.assetSymbol}</span> → ${whale.toLabel || 'Unknown'} | just now`;
+    item.innerHTML = 'WHALE: <span class="' + (whale.riskLevel==='CRITICAL'?'t-down':'t-up') + '">'
+        + formatNum(whale.amount) + ' ' + (whale.assetSymbol||'ETH') + '</span> \u2192 '
+        + (whale.toLabel||'Unknown') + ' | just now';
     inner.appendChild(item.cloneNode(true));
     inner.appendChild(item);
 }
 
 // ── Live Clock ────────────────────────────────────────────────────────
 function updateClock() {
-    const now = new Date();
-    document.getElementById('liveClock').textContent =
-        now.toISOString().substring(0,19).replace('T',' ') + ' UTC';
+    var el = document.getElementById('liveClock');
+    if (el) el.textContent = new Date().toISOString().substring(0,19).replace('T',' ') + ' UTC';
 }
 setInterval(updateClock, 1000);
 updateClock();
 
-// ── Demo Mode (QuickNode 미연결 시 시뮬레이션) ────────────────────────
-// ETH 전용 시나리오 (QuickNode Ethereum Mainnet)
-const DEMO_SCENARIOS = [
+// ── Demo Mode ─────────────────────────────────────────────────────────
+var DEMO_SCENARIOS = [
     { exchange:'HashKey Exchange',  type:'Exchange', risk:'CRITICAL' },
     { exchange:'OKX Hot Wallet',    type:'Exchange', risk:'CRITICAL' },
     { exchange:'Binance Hot Wallet',type:'Exchange', risk:'HIGH'     },
@@ -963,97 +887,92 @@ const DEMO_SCENARIOS = [
     { exchange:'Unknown Whale',     type:'Whale',    risk:'HIGH'     },
     { exchange:'Uniswap V3 Pool',   type:'DeFi',     risk:'MEDIUM'  },
 ];
-
 function generateDemoWhale() {
-    const s      = DEMO_SCENARIOS[Math.floor(Math.random() * DEMO_SCENARIOS.length)];
-    const amount = 1000 + Math.random() * 9000;  // 1,000 ~ 10,000 ETH
-
+    var s = DEMO_SCENARIOS[Math.floor(Math.random() * DEMO_SCENARIOS.length)];
+    var amount = Math.round((1000 + Math.random() * 9000) * 10) / 10;
     return {
         txHash:       '0x' + Math.random().toString(16).substring(2,18) + '...',
-        chainName:    'Ethereum',
-        assetSymbol:  'ETH',
-        amount:       Math.round(amount * 10) / 10,
-        amountUsd:    amount * 2400,
+        chainName:    'Ethereum', assetSymbol: 'ETH',
+        amount:       amount,    amountUsd:   amount * 2400,
         fromAddress:  '0x' + Math.random().toString(16).substring(2,42),
         toAddress:    '0x' + Math.random().toString(16).substring(2,42),
         fromLabel:    Math.random() > 0.6 ? 'Unknown' : 'Whale Wallet',
-        toLabel:      s.exchange,
-        fromLabelType:'Unknown',
-        toLabelType:  s.type,
+        toLabel:      s.exchange, fromLabelType: 'Unknown', toLabelType: s.type,
         riskLevel:    s.risk,
     };
 }
-
 function startDemoMode() {
-    if (!State.demoMode) return;  // 이미 실데이터 수신 중이면 시작 안 함
-    console.log('🔴 Demo mode: 실데이터 WebSocket 연결 전 시뮬레이션 데이터 생성 중');
-    // 초기 빠른 burst (5개) — demoMode가 false로 바뀌면 즉시 중단
-    for (let i = 0; i < 5; i++) {
-        setTimeout(() => { if (State.demoMode) handleWhaleAlert(generateDemoWhale()); }, i * 600);
+    if (!State.demoMode) return;
+    console.log('[WHALE] Demo mode 시작');
+    for (var i = 0; i < 5; i++) {
+        (function(n) { setTimeout(function() { if (State.demoMode) handleWhaleAlert(generateDemoWhale()); }, n * 600); })(i);
     }
-    // 이후 주기적 생성 (8~20초 랜덤)
     function scheduleNext() {
-        if (!State.demoMode) return;   // 실데이터 수신 시 루프 종료
-        const delay = 8000 + Math.random() * 12000;
-        setTimeout(() => {
+        if (!State.demoMode) return;
+        setTimeout(function() {
             if (!State.demoMode) return;
             handleWhaleAlert(generateDemoWhale());
-            updateVolumeChart(generateDemoWhale());
             scheduleNext();
-        }, delay);
+        }, 8000 + Math.random() * 12000);
     }
     scheduleNext();
 }
 
 // ── 유틸 ─────────────────────────────────────────────────────────────
 function formatNum(n) {
-    if (!n && n !== 0) return '—';
-    return new Intl.NumberFormat('en', {maximumFractionDigits:1}).format(n);
+    if (!n && n !== 0) return '\u2014';
+    return new Intl.NumberFormat('en', { maximumFractionDigits: 1 }).format(n);
 }
 function formatMoney(n) {
-    if (!n) return '—';
+    if (!n) return '\u2014';
     if (n >= 1e9) return (n/1e9).toFixed(1) + 'B';
     if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
     if (n >= 1e3) return (n/1e3).toFixed(1) + 'K';
     return n.toFixed(0);
 }
-function randomHub() {
-    return HUBS[Math.floor(Math.random() * HUBS.length)];
-}
 
-// ── 주요 함수/변수를 window에 명시 등록 → 콘솔에서 직접 호출 가능 ─────
-window.addWhaleFlow  = addWhaleFlow;
-window.resizeCanvas  = resizeCanvas;
-window.drawFrame     = drawFrame;
+// ── window 노출 (HTML onclick + DevTools 콘솔 접근용) ─────────────────
+window.selectChain      = selectChain;
+window.performLookup    = performLookup;
+window.addWhaleFlow     = addWhaleFlow;
 window.handleWhaleAlert = handleWhaleAlert;
+window.resizeCanvas     = resizeCanvas;
+window.drawFrame        = drawFrame;
+window.getMapInfo = function() { return { W: W, H: H, canvas: getCvs(), flows: State.flows.length }; };
 
 // ── 초기화 ────────────────────────────────────────────────────────────
-renderActivityGrid();
-resizeCanvas();
-drawFrame();
+if (!getCvs()) {
+    console.error('[WHALE] <canvas id="threatMap"> 를 찾을 수 없습니다. 지도 비활성화.');
+} else {
+    renderActivityGrid();
+    resizeCanvas();
+    drawFrame();
+
+    // 안전망: 600ms 후 CSS flex 계산 완료 후 재측정
+    setTimeout(function() {
+        var c = getCvs(), cont = c && c.parentElement;
+        if (!cont) return;
+        var fw = cont.clientWidth  || cont.offsetWidth  || 0;
+        var fh = cont.clientHeight || cont.offsetHeight || 0;
+        if (fw <= 300 || fh <= 200) {
+            fw = Math.max(window.innerWidth  - 628, 400);
+            fh = Math.max(window.innerHeight - 116, 300);
+        }
+        if (fw !== W || fh !== H) {
+            W = c.width  = fw;
+            H = c.height = fh;
+            positionHubLabels();
+            console.warn('[WHALE] Canvas 재설정:', W, 'x', H);
+        } else {
+            console.log('[WHALE] Canvas 정상:', W, 'x', H);
+        }
+    }, 600);
+}
+
 connectWebSocket();
 setTimeout(startDemoMode, 1500);
 
-// 안전망: 600ms 후 CSS flex 계산 완료 후 재측정
-setTimeout(function() {
-    var c = canvas ? canvas.parentElement : null;
-    if (!c) return;
-    var fw = c.clientWidth  || c.offsetWidth;
-    var fh = c.clientHeight || c.offsetHeight;
-    if (fw <= 300 || fh <= 200) {
-        fw = Math.max(window.innerWidth  - 628, 400);
-        fh = Math.max(window.innerHeight - 116, 300);
-    }
-    if (fw !== W || fh !== H) {
-        W = window.W = canvas.width  = fw;
-        H = window.H = canvas.height = fh;
-        positionHubLabels();
-        console.warn('[WHALE] Canvas 재설정:', W, 'x', H);
-    } else {
-        console.log('[WHALE] Canvas 정상:', W, 'x', H);
-    }
-}, 600);
-
+}());
 </script>
 </body>
 </html>
