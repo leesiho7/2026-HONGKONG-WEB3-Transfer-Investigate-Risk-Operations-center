@@ -337,29 +337,33 @@ const CONTINENTS = [
 ];
 
 // ── Canvas 초기화 ────────────────────────────────────────────────────
-// var 사용 → window.W, window.canvas 등으로 콘솔에서 직접 접근 가능
-var canvas = document.getElementById('threatMap');
-var ctx    = canvas ? canvas.getContext('2d') : null;
-var W = 0, H = 0;
+// window.X 에 직접 할당 → DevTools 콘솔에서 canvas, W, H 로 즉시 접근 가능
+window.canvas = document.getElementById('threatMap');
+window.ctx    = window.canvas ? window.canvas.getContext('2d') : null;
+window.W = 0;
+window.H = 0;
+// 스크립트 내부 참조용 alias
+var canvas = window.canvas;
+var ctx    = window.ctx;
+var W      = window.W;
+var H      = window.H;
 
-if (!canvas) console.error('[WHALE] <canvas id="threatMap"> 가 DOM에 없음');
-if (!ctx)    console.error('[WHALE] 2D context 획득 실패');
+if (!canvas) { console.error('[WHALE] <canvas id="threatMap"> 없음'); }
+if (!ctx)    { console.error('[WHALE] 2D context 획득 실패'); }
 
 function resizeCanvas() {
     if (!canvas) return;
+    // 컨테이너가 아직 flex 계산 전일 수 있으므로
+    // 뷰포트에서 직접 계산: feed(340px) + tools(280px) + borders(8px) = 628
+    // topbar(52) + ticker(22) + bottombar(42) = 116
     var cont = canvas.parentElement;
-    var w = cont.clientWidth  || cont.offsetWidth;
-    var h = cont.clientHeight || cont.offsetHeight;
-    // 300×150 = HTML <canvas> 기본 intrinsic 크기.
-    // cont.clientHeight가 0이면 || fallback도 0이고 canvas 기본값이 그대로 남는다.
-    // → 뷰포트에서 직접 계산: feed(340) + tools(280) + border(8) = 628 / topbar+ticker+bottombar = 116
-    if (w < 400 || h < 250) {
-        w = Math.max(window.innerWidth  - 628, 400);
-        h = Math.max(window.innerHeight - 116, 300);
-    }
+    var cw = cont.clientWidth  || cont.offsetWidth;
+    var ch = cont.clientHeight || cont.offsetHeight;
+    var w = (cw > 300) ? cw : Math.max(window.innerWidth  - 628, 400);
+    var h = (ch > 200) ? ch : Math.max(window.innerHeight - 116, 300);
     if (w !== W || h !== H) {
-        W = canvas.width  = w;
-        H = canvas.height = h;
+        W = window.W = canvas.width  = w;
+        H = window.H = canvas.height = h;
         positionHubLabels();
         console.log('[WHALE] Canvas 설정됨:', W, 'x', H);
     }
@@ -367,10 +371,11 @@ function resizeCanvas() {
 
 window.addEventListener('resize', resizeCanvas);
 
-// ResizeObserver: 브라우저가 레이아웃을 실제로 계산한 직후 콜백 — 가장 신뢰할 수 있는 방법
-if (window.ResizeObserver) {
-    new ResizeObserver(resizeCanvas).observe(canvas.parentElement);
-}
+try {
+    if (window.ResizeObserver && canvas) {
+        new ResizeObserver(resizeCanvas).observe(canvas.parentElement);
+    }
+} catch(e) { /* ResizeObserver 미지원 무시 */ }
 
 // ── Hub Label Overlay ────────────────────────────────────────────────
 function positionHubLabels() {
@@ -1016,31 +1021,36 @@ function randomHub() {
     return HUBS[Math.floor(Math.random() * HUBS.length)];
 }
 
-// ── 초기화 ────────────────────────────────────────────────────────────
-// 스크립트는 <body> 맨 아래에 위치 → DOM 완전히 구성됨 → 즉시 실행 가능
-renderActivityGrid();
-resizeCanvas();         // 즉시 크기 측정 시도
-drawFrame();            // 렌더 루프 시작 (W=0이면 guard가 RAF로 재시도)
-connectWebSocket();     // WebSocket 연결
-setTimeout(startDemoMode, 1500); // 1.5초 후 데모 시작
+// ── 주요 함수/변수를 window에 명시 등록 → 콘솔에서 직접 호출 가능 ─────
+window.addWhaleFlow  = addWhaleFlow;
+window.resizeCanvas  = resizeCanvas;
+window.drawFrame     = drawFrame;
+window.handleWhaleAlert = handleWhaleAlert;
 
-// 안전망: 500ms 후 크기가 너무 작으면(300×150 기본값 포함) 뷰포트 기준으로 강제 재설정
-setTimeout(() => {
-    var c = canvas.parentElement;
-    // CSS flex 반영 후 컨테이너 실제 크기 재측정
+// ── 초기화 ────────────────────────────────────────────────────────────
+renderActivityGrid();
+resizeCanvas();
+drawFrame();
+connectWebSocket();
+setTimeout(startDemoMode, 1500);
+
+// 안전망: 600ms 후 CSS flex 계산 완료 후 재측정
+setTimeout(function() {
+    var c = canvas ? canvas.parentElement : null;
+    if (!c) return;
     var fw = c.clientWidth  || c.offsetWidth;
     var fh = c.clientHeight || c.offsetHeight;
-    if (fw < 400 || fh < 250) {
+    if (fw <= 300 || fh <= 200) {
         fw = Math.max(window.innerWidth  - 628, 400);
         fh = Math.max(window.innerHeight - 116, 300);
     }
     if (fw !== W || fh !== H) {
-        W = canvas.width  = fw;
-        H = canvas.height = fh;
+        W = window.W = canvas.width  = fw;
+        H = window.H = canvas.height = fh;
         positionHubLabels();
-        console.warn('⚠️ Canvas 크기 재설정:', W, 'x', H);
+        console.warn('[WHALE] Canvas 재설정:', W, 'x', H);
     } else {
-        console.log('✅ Canvas 정상:', W, 'x', H);
+        console.log('[WHALE] Canvas 정상:', W, 'x', H);
     }
 }, 600);
 
