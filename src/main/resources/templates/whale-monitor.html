@@ -388,7 +388,7 @@ function drawBackground() {
 }
 
 function drawGrid() {
-    ctx.strokeStyle = 'rgba(0,200,120,0.035)';
+    ctx.strokeStyle = 'rgba(0,200,120,0.07)';
     ctx.lineWidth = 0.5;
     const gridX = W / 24, gridY = H / 12;
     for (let x = 0; x <= W; x += gridX) {
@@ -398,7 +398,7 @@ function drawGrid() {
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
     }
     // Equator & Prime Meridian
-    ctx.strokeStyle = 'rgba(0,200,120,0.08)';
+    ctx.strokeStyle = 'rgba(0,200,120,0.18)';
     ctx.lineWidth = 1;
     const eq = H * 0.5;
     ctx.setLineDash([4, 8]);
@@ -415,9 +415,9 @@ function drawContinents() {
             ctx.lineTo(poly[i][0]*W, poly[i][1]*H);
         }
         ctx.closePath();
-        ctx.fillStyle   = 'rgba(0,160,80,0.07)';
-        ctx.strokeStyle = 'rgba(0,200,100,0.18)';
-        ctx.lineWidth   = 0.8;
+        ctx.fillStyle   = 'rgba(0,160,80,0.14)';
+        ctx.strokeStyle = 'rgba(0,232,135,0.45)';
+        ctx.lineWidth   = 1.0;
         ctx.fill();
         ctx.stroke();
     });
@@ -446,27 +446,27 @@ function drawHubs() {
         const pulse = Math.sin(now / 1000 + h.x * 10) * 0.3 + 0.7;
 
         // Outer glow
-        const grad = ctx.createRadialGradient(px, py, 0, px, py, 18);
-        grad.addColorStop(0, `rgba(0,232,135,${0.15 * pulse})`);
+        const grad = ctx.createRadialGradient(px, py, 0, px, py, 22);
+        grad.addColorStop(0, `rgba(0,232,135,${0.30 * pulse})`);
         grad.addColorStop(1, 'transparent');
         ctx.fillStyle = grad;
         ctx.beginPath();
-        ctx.arc(px, py, 18, 0, Math.PI*2);
+        ctx.arc(px, py, 22, 0, Math.PI*2);
         ctx.fill();
 
         // Ring
         ctx.beginPath();
-        ctx.arc(px, py, 5, 0, Math.PI*2);
-        ctx.strokeStyle = `rgba(0,232,135,${0.5 * pulse})`;
+        ctx.arc(px, py, 6, 0, Math.PI*2);
+        ctx.strokeStyle = `rgba(0,232,135,${0.8 * pulse})`;
         ctx.lineWidth = 1.5;
         ctx.stroke();
 
         // Core dot
         ctx.beginPath();
-        ctx.arc(px, py, 2.5, 0, Math.PI*2);
+        ctx.arc(px, py, 3, 0, Math.PI*2);
         ctx.fillStyle = `rgba(0,232,135,${pulse})`;
         ctx.shadowColor = '#00e887';
-        ctx.shadowBlur = 8 * pulse;
+        ctx.shadowBlur = 12 * pulse;
         ctx.fill();
         ctx.shadowBlur = 0;
     });
@@ -522,10 +522,10 @@ class WhaleFlow {
             const p = this.bezier(t);
             ctx.lineTo(p.x, p.y);
         }
-        ctx.strokeStyle = `${color}${Math.floor(opacity * 40).toString(16).padStart(2,'0')}`;
-        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = `${color}${Math.floor(opacity * 90).toString(16).padStart(2,'0')}`;
+        ctx.lineWidth = 2;
         ctx.shadowColor = color;
-        ctx.shadowBlur = 4;
+        ctx.shadowBlur = 8;
         ctx.stroke();
         ctx.shadowBlur = 0;
 
@@ -981,10 +981,14 @@ function randomHub() {
 
 // ── 초기화 ────────────────────────────────────────────────────────────
 renderActivityGrid();
-resizeCanvas();        // 레이아웃 확정 후 캔버스 크기 재측정
-drawFrame();           // Canvas 렌더 루프 시작
-connectWebSocket();    // WebSocket 연결
-setTimeout(startDemoMode, 1200);  // 1.2초 후 데모 시작 (WS 연결 대기)
+
+// 레이아웃이 완전히 확정된 이후 캔버스 초기화 (flex 높이 계산 완료 보장)
+window.addEventListener('load', () => {
+    resizeCanvas();
+    drawFrame();           // Canvas 렌더 루프 시작
+    connectWebSocket();    // WebSocket 연결
+    setTimeout(startDemoMode, 1500);  // 1.5초 후 데모 시작 (WS 연결 대기)
+});
 
 </script>
 </body>

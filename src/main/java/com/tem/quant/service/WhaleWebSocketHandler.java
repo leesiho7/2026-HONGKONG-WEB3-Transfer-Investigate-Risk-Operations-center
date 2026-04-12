@@ -28,18 +28,31 @@ public class WhaleWebSocketHandler {
             String fromLabel = (tx.getFromLabel() != null) ? tx.getFromLabel() : "Unknown";
             String toLabel = (tx.getToLabel() != null) ? tx.getToLabel() : "Unknown";
 
-            payload.put("txHash", (tx.getTxHash() != null) ? tx.getTxHash() : "0x000...");
-            payload.put("amount", tx.getAmount());
-            payload.put("assetSymbol", (tx.getAssetSymbol() != null) ? tx.getAssetSymbol() : "ETH");
-            payload.put("riskLevel", (tx.getRiskLevel() != null) ? tx.getRiskLevel() : "INFO");
-            payload.put("fromLabel", fromLabel);
-            payload.put("toLabel", toLabel);
-            
-            // 2. GeographicMapper를 통한 허브 좌표 매핑
-            payload.put("fromHub", geoMapper.mapToHub(fromLabel));
-            payload.put("toHub", geoMapper.mapToHub(toLabel));
-            
-            payload.put("amountUsd", (tx.getAmountUsd() != null) ? tx.getAmountUsd() : 0.0);
+            payload.put("txHash",        (tx.getTxHash()      != null) ? tx.getTxHash()      : "0x000...");
+            payload.put("amount",        tx.getAmount());
+            payload.put("assetSymbol",   (tx.getAssetSymbol() != null) ? tx.getAssetSymbol() : "ETH");
+            payload.put("chainName",     (tx.getChainName()   != null) ? tx.getChainName()   : "Ethereum");
+            payload.put("riskLevel",     (tx.getRiskLevel()   != null) ? tx.getRiskLevel()   : "INFO");
+            payload.put("fromLabel",     fromLabel);
+            payload.put("toLabel",       toLabel);
+            payload.put("fromLabelType", (tx.getFromLabelType() != null) ? tx.getFromLabelType() : "unknown");
+            payload.put("toLabelType",   (tx.getToLabelType()   != null) ? tx.getToLabelType()   : "unknown");
+            payload.put("fromAddress",   (tx.getFromAddress() != null) ? tx.getFromAddress() : "");
+            payload.put("toAddress",     (tx.getToAddress()   != null) ? tx.getToAddress()   : "");
+            payload.put("amountUsd",     (tx.getAmountUsd()   != null) ? tx.getAmountUsd()   : 0.0);
+
+            // GeographicMapper를 통한 허브 매핑 (from/to 가 같아지지 않도록 보장)
+            String fromHub = geoMapper.mapToHub(fromLabel);
+            String toHub   = geoMapper.mapToHub(toLabel);
+            // 우연히 같은 허브가 배정됐으면 toHub를 다른 랜덤 허브로 교체
+            if (fromHub.equals(toHub)) {
+                toHub = geoMapper.getRandomHub();
+                while (toHub.equals(fromHub)) {
+                    toHub = geoMapper.getRandomHub();
+                }
+            }
+            payload.put("fromHub", fromHub);
+            payload.put("toHub",   toHub);
 
             // 3. WebSocket 전송 (/topic/whale-alerts 채널)
             messagingTemplate.convertAndSend("/topic/whale-alerts", payload);
