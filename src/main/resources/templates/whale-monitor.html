@@ -338,18 +338,23 @@ const CONTINENTS = [
 
 // ── Canvas 초기화 ────────────────────────────────────────────────────
 const canvas = document.getElementById('threatMap');
-const ctx    = canvas.getContext('2d');
-let W = 0, H = 0;
+if (!canvas) {
+    console.error('[WHALE] FATAL: <canvas id="threatMap"> 가 DOM에 없습니다. HTML 구조 확인 필요.');
+}
+const ctx = canvas ? canvas.getContext('2d') : null;
+// var 사용 → window.W 로 콘솔에서 접근 가능 (let은 일부 환경에서 콘솔 접근 불가)
+var W = 0, H = 0;
 
 function resizeCanvas() {
+    if (!canvas) return;
     const container = canvas.parentElement;
-    // clientWidth/Height: flex 계산값. offsetWidth/Height: 렌더링 실제값
     const w = container.clientWidth  || container.offsetWidth;
     const h = container.clientHeight || container.offsetHeight;
     if (w > 0 && h > 0) {
         W = canvas.width  = w;
         H = canvas.height = h;
         positionHubLabels();
+        console.log('[WHALE] Canvas 크기 설정:', W, 'x', H);
     }
 }
 
@@ -375,13 +380,14 @@ function positionHubLabels() {
 }
 
 // ── Canvas Render Loop ────────────────────────────────────────────────
-let _drawWarnOnce = false;
+var _drawWarnOnce = false;
 function drawFrame() {
+    if (!ctx) return;   // canvas 초기화 실패 시 즉시 중단
     if (!W || !H) {
         resizeCanvas();
         if (!_drawWarnOnce) {
             _drawWarnOnce = true;
-            console.warn('drawFrame: W/H=0, waiting... container=',
+            console.warn('[WHALE] drawFrame: W/H=0 대기 중... container=',
                 canvas.parentElement.clientWidth, 'x', canvas.parentElement.clientHeight);
         }
         requestAnimationFrame(drawFrame);
