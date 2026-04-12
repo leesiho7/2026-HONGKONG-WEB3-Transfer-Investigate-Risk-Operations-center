@@ -288,6 +288,11 @@
 (function () {
 'use strict';
 
+/* ═══════════════════════════════════════════════════════════════════════
+   CYBERPUNK WHALE ALERT — Canvas Renderer
+   홍콩 Web3 Edition | Neon + Particle + Scanner
+═══════════════════════════════════════════════════════════════════════ */
+
 // ── 상태 ──────────────────────────────────────────────────────────────
 var _dataEl = document.getElementById('roc-whale-data');
 var State = {
@@ -305,18 +310,18 @@ var State = {
 
 // ── 세계 금융 허브 위치 (normalized 0–1) ─────────────────────────────
 var HUBS = [
-    { id:'SFO', name:'San Francisco', x:0.11, y:0.34 },
-    { id:'NYC', name:'New York',      x:0.20, y:0.33 },
-    { id:'SAO', name:'Sao Paulo',     x:0.25, y:0.73 },
-    { id:'LON', name:'London',        x:0.45, y:0.24 },
-    { id:'ZRH', name:'Zurich',        x:0.47, y:0.24 },
-    { id:'DXB', name:'Dubai',         x:0.59, y:0.44 },
-    { id:'MUM', name:'Mumbai',        x:0.63, y:0.50 },
-    { id:'SIN', name:'Singapore',     x:0.73, y:0.60 },
-    { id:'HKG', name:'Hong Kong',     x:0.77, y:0.45 },
-    { id:'TYO', name:'Tokyo',         x:0.83, y:0.36 },
-    { id:'SEO', name:'Seoul',         x:0.81, y:0.34 },
-    { id:'SYD', name:'Sydney',        x:0.84, y:0.75 },
+    { id:'SFO', name:'San Francisco', x:0.11, y:0.34, lastActive:0 },
+    { id:'NYC', name:'New York',      x:0.20, y:0.33, lastActive:0 },
+    { id:'SAO', name:'Sao Paulo',     x:0.25, y:0.73, lastActive:0 },
+    { id:'LON', name:'London',        x:0.45, y:0.24, lastActive:0 },
+    { id:'ZRH', name:'Zurich',        x:0.47, y:0.24, lastActive:0 },
+    { id:'DXB', name:'Dubai',         x:0.59, y:0.44, lastActive:0 },
+    { id:'MUM', name:'Mumbai',        x:0.63, y:0.50, lastActive:0 },
+    { id:'SIN', name:'Singapore',     x:0.73, y:0.60, lastActive:0 },
+    { id:'HKG', name:'Hong Kong',     x:0.77, y:0.45, lastActive:0 },
+    { id:'TYO', name:'Tokyo',         x:0.83, y:0.36, lastActive:0 },
+    { id:'SEO', name:'Seoul',         x:0.81, y:0.34, lastActive:0 },
+    { id:'SYD', name:'Sydney',        x:0.84, y:0.75, lastActive:0 },
 ];
 
 var CONTINENTS = [
@@ -334,6 +339,12 @@ var _cvs = null;
 var _ctx = null;
 var W = 0;
 var H = 0;
+
+// ── 사이버펑크 렌더 상태 ──────────────────────────────────────────────
+var _scanX      = 0;          // 스캐너 X 위치 (0–1 normalized)
+var _scanSpeed  = 0.00018;    // 스캐너 이동 속도 (per frame)
+var _stars      = null;       // 별 캐시 (배열 생성 1회)
+var _NSTARS     = 120;
 
 function getCvs() {
     if (!_cvs) { _cvs = document.getElementById('threatMap'); }
@@ -404,42 +415,82 @@ function drawFrame() {
         return;
     }
     _drawWarnOnce = false;
+
+    // 스캐너 진행
+    _scanX = (_scanX + _scanSpeed) % 1;
+
     ctx.clearRect(0, 0, W, H);
     drawBackground(ctx);
-    drawContinents(ctx);
+    drawStars(ctx);
     drawGrid(ctx);
+    drawContinents(ctx);
     drawRegionLabels(ctx);
+    drawScanner(ctx);
     drawFlows(ctx);
     drawHubs(ctx);
+    drawVignette(ctx);
     requestAnimationFrame(drawFrame);
 }
 
+// ── 배경 — 깊은 우주 ──────────────────────────────────────────────────
 function drawBackground(ctx) {
-    var g = ctx.createRadialGradient(W*0.5, H*0.5, 0, W*0.5, H*0.5, W*0.7);
-    g.addColorStop(0, '#020e18');
-    g.addColorStop(1, '#020608');
+    var g = ctx.createRadialGradient(W*0.5, H*0.45, 0, W*0.5, H*0.5, W*0.85);
+    g.addColorStop(0,   '#03111f');
+    g.addColorStop(0.5, '#020c18');
+    g.addColorStop(1,   '#010608');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
 }
 
+// ── 별 ────────────────────────────────────────────────────────────────
+function drawStars(ctx) {
+    if (!_stars || _stars.length === 0) {
+        _stars = [];
+        for (var s = 0; s < _NSTARS; s++) {
+            _stars.push({
+                rx: Math.random(),
+                ry: Math.random(),
+                r:  Math.random() * 1.2 + 0.2,
+                a:  Math.random() * 0.5 + 0.1,
+                sp: Math.random() * 2000 + 1000
+            });
+        }
+    }
+    var now = Date.now();
+    for (var i = 0; i < _stars.length; i++) {
+        var st = _stars[i];
+        var twinkle = Math.sin(now / st.sp + st.rx * 20) * 0.3 + 0.7;
+        ctx.beginPath();
+        ctx.arc(st.rx * W, st.ry * H, st.r, 0, Math.PI*2);
+        ctx.fillStyle = 'rgba(180,220,255,' + (st.a * twinkle).toFixed(2) + ')';
+        ctx.fill();
+    }
+}
+
+// ── 사이버 그리드 ─────────────────────────────────────────────────────
 function drawGrid(ctx) {
-    ctx.strokeStyle = 'rgba(0,200,120,0.07)';
-    ctx.lineWidth = 0.5;
     var gx = W / 24, gy = H / 12;
+    ctx.lineWidth = 0.4;
+
+    // 가는 격자
+    ctx.strokeStyle = 'rgba(0,220,160,0.045)';
     for (var x = 0; x <= W; x += gx) {
         ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
     }
     for (var y = 0; y <= H; y += gy) {
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
     }
-    ctx.strokeStyle = 'rgba(0,200,120,0.18)';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([4, 8]);
-    ctx.beginPath(); ctx.moveTo(0, H*0.5); ctx.lineTo(W, H*0.5); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(W*0.5, 0); ctx.lineTo(W*0.5, H); ctx.stroke();
+
+    // 보조 중간선 (밝게)
+    ctx.strokeStyle = 'rgba(0,255,180,0.11)';
+    ctx.lineWidth = 0.7;
+    ctx.setLineDash([2, 6]);
+    ctx.beginPath(); ctx.moveTo(0, H*0.5);  ctx.lineTo(W, H*0.5);  ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(W*0.5, 0);  ctx.lineTo(W*0.5, H);  ctx.stroke();
     ctx.setLineDash([]);
 }
 
+// ── 대륙 — 네온 아웃라인 ──────────────────────────────────────────────
 function drawContinents(ctx) {
     for (var i = 0; i < CONTINENTS.length; i++) {
         var poly = CONTINENTS[i];
@@ -447,67 +498,148 @@ function drawContinents(ctx) {
         ctx.moveTo(poly[0][0]*W, poly[0][1]*H);
         for (var j = 1; j < poly.length; j++) { ctx.lineTo(poly[j][0]*W, poly[j][1]*H); }
         ctx.closePath();
-        ctx.fillStyle   = 'rgba(0,160,80,0.14)';
-        ctx.strokeStyle = 'rgba(0,232,135,0.45)';
-        ctx.lineWidth   = 1.0;
-        ctx.fill(); ctx.stroke();
+        // 내부 도시 광채 느낌
+        ctx.fillStyle = 'rgba(0, 40, 25, 0.75)';
+        ctx.fill();
+        // 네온 윤곽선 (2단 글로우)
+        ctx.shadowColor = '#00ffa0';
+        ctx.shadowBlur  = 6;
+        ctx.strokeStyle = 'rgba(0,255,160,0.55)';
+        ctx.lineWidth   = 1.2;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
     }
 }
 
+// ── 지역 레이블 ───────────────────────────────────────────────────────
 function drawRegionLabels(ctx) {
     var regions = [
-        { label:'AMERICAS', x:0.14, y:0.88 },
-        { label:'EMEA',     x:0.48, y:0.88 },
-        { label:'APAC',     x:0.78, y:0.88 },
+        { label:'AMERICAS', x:0.14, y:0.92 },
+        { label:'EMEA',     x:0.48, y:0.92 },
+        { label:'APAC',     x:0.78, y:0.92 },
     ];
-    ctx.font = '9px Monaco, Courier New, monospace';
+    ctx.font = '700 9px Monaco, monospace';
     ctx.textAlign = 'center';
+    ctx.letterSpacing = '3px';
     for (var i = 0; i < regions.length; i++) {
-        ctx.fillStyle = 'rgba(0,200,120,0.2)';
+        ctx.fillStyle = 'rgba(0,255,160,0.18)';
         ctx.fillText(regions[i].label, regions[i].x*W, regions[i].y*H);
     }
     ctx.textAlign = 'left';
 }
 
+// ── 스캐너 스윕 ───────────────────────────────────────────────────────
+function drawScanner(ctx) {
+    var sx = _scanX * W;
+    var grad = ctx.createLinearGradient(sx - 40, 0, sx + 4, 0);
+    grad.addColorStop(0,   'rgba(0,255,200,0)');
+    grad.addColorStop(0.7, 'rgba(0,255,200,0.04)');
+    grad.addColorStop(1,   'rgba(0,255,200,0.18)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(sx - 40, 0, 44, H);
+
+    // 스캐너 엣지 라인
+    ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, H);
+    ctx.strokeStyle = 'rgba(0,255,200,0.5)';
+    ctx.lineWidth = 1;
+    ctx.shadowColor = '#00ffc8'; ctx.shadowBlur = 8;
+    ctx.stroke(); ctx.shadowBlur = 0;
+}
+
+// ── 비네팅 (가장자리 어둡게) ─────────────────────────────────────────
+function drawVignette(ctx) {
+    var vg = ctx.createRadialGradient(W*0.5, H*0.5, H*0.25, W*0.5, H*0.5, W*0.75);
+    vg.addColorStop(0,   'rgba(0,0,0,0)');
+    vg.addColorStop(1,   'rgba(0,0,0,0.65)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, W, H);
+}
+
+// ── 허브 — 사이버펑크 멀티링 ─────────────────────────────────────────
 function drawHubs(ctx) {
     var now = Date.now();
     for (var i = 0; i < HUBS.length; i++) {
-        var h = HUBS[i];
-        var px = h.x * W, py = h.y * H;
-        var pulse = Math.sin(now / 1000 + h.x * 10) * 0.3 + 0.7;
-        var g = ctx.createRadialGradient(px, py, 0, px, py, 22);
-        g.addColorStop(0, 'rgba(0,232,135,' + (0.30 * pulse).toFixed(2) + ')');
-        g.addColorStop(1, 'transparent');
-        ctx.fillStyle = g;
-        ctx.beginPath(); ctx.arc(px, py, 22, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI*2);
-        ctx.strokeStyle = 'rgba(0,232,135,' + (0.8 * pulse).toFixed(2) + ')';
-        ctx.lineWidth = 1.5; ctx.stroke();
-        ctx.beginPath(); ctx.arc(px, py, 3, 0, Math.PI*2);
-        ctx.fillStyle = 'rgba(0,232,135,' + pulse.toFixed(2) + ')';
-        ctx.shadowColor = '#00e887'; ctx.shadowBlur = 12 * pulse;
+        var h   = HUBS[i];
+        var px  = h.x * W, py = h.y * H;
+        var age = now - (h.lastActive || 0);
+
+        // 최근 활성화 여부 (3초 이내)
+        var hot    = age < 3000;
+        var hotPct = hot ? Math.max(0, 1 - age / 3000) : 0;
+
+        // 기본 펄스
+        var pulse = Math.sin(now / 1200 + h.x * 8) * 0.25 + 0.75;
+
+        // ① 도시 글로우 (따뜻한 황금빛)
+        var cityR  = 30 + hotPct * 20;
+        var cityG  = ctx.createRadialGradient(px, py, 0, px, py, cityR);
+        cityG.addColorStop(0, 'rgba(255,180,60,' + (0.08 + hotPct*0.12).toFixed(2) + ')');
+        cityG.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = cityG;
+        ctx.beginPath(); ctx.arc(px, py, cityR, 0, Math.PI*2); ctx.fill();
+
+        // ② 외곽 링 (활성 시 빠르게 팽창)
+        if (hot) {
+            var expandR = (age / 3000) * 48;
+            var expandA = (1 - age/3000) * 0.7;
+            ctx.beginPath(); ctx.arc(px, py, expandR, 0, Math.PI*2);
+            ctx.strokeStyle = 'rgba(0,255,160,' + expandA.toFixed(2) + ')';
+            ctx.lineWidth = 1.5;
+            ctx.shadowColor = '#00ffa0'; ctx.shadowBlur = 12;
+            ctx.stroke(); ctx.shadowBlur = 0;
+        }
+
+        // ③ 중간 링
+        ctx.beginPath(); ctx.arc(px, py, 9, 0, Math.PI*2);
+        ctx.strokeStyle = 'rgba(0,255,150,' + (0.55 * pulse).toFixed(2) + ')';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // ④ 코어 도트
+        ctx.beginPath(); ctx.arc(px, py, 3.5, 0, Math.PI*2);
+        var coreA = 0.7 + hotPct * 0.3;
+        ctx.fillStyle = hot ? 'rgba(255,255,100,' + coreA.toFixed(2) + ')' : 'rgba(0,255,150,' + coreA.toFixed(2) + ')';
+        ctx.shadowColor = hot ? '#ffff00' : '#00ff96';
+        ctx.shadowBlur  = 10 + hotPct * 16;
         ctx.fill(); ctx.shadowBlur = 0;
+
+        // ⑤ 허브 ID 레이블 (위에)
+        ctx.font = '700 9px Monaco, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = hot ? 'rgba(255,255,160,0.95)' : 'rgba(0,255,150,0.7)';
+        ctx.shadowColor = hot ? '#ffff80' : '#00ff96';
+        ctx.shadowBlur = hot ? 8 : 4;
+        ctx.fillText(h.id, px, py - 14);
+        ctx.shadowBlur = 0;
+        ctx.textAlign = 'left';
     }
 }
 
-// ── WhaleFlow ─────────────────────────────────────────────────────────
+// ── WhaleFlow — 사이버펑크 파티클 레이저 ──────────────────────────────
 function WhaleFlow(fromHub, toHub, riskLevel, amount) {
     this.from     = fromHub;
     this.to       = toHub;
     this.risk     = riskLevel;
     this.amount   = amount;
     this.progress = 0;
-    this.speed    = 0.004 + Math.random() * 0.003;
+    this.speed    = 0.0035 + Math.random() * 0.0025;
     this.created  = Date.now();
-    this.lifespan = 7000;
-    this.cpx = (fromHub.x + toHub.x) / 2 * W;
-    this.cpy = Math.min(fromHub.y, toHub.y) * H - H * 0.18;
+    this.lifespan = 8500;
+    this.cpx = 0; this.cpy = 0;
+    this._recalcControl();
 }
+WhaleFlow.prototype._recalcControl = function () {
+    this.cpx = (this.from.x + this.to.x) / 2 * W;
+    var dx   = (this.to.x - this.from.x) * W;
+    var dy   = (this.to.y - this.from.y) * H;
+    var dist = Math.sqrt(dx*dx + dy*dy);
+    this.cpy = Math.min(this.from.y, this.to.y) * H - Math.max(H * 0.12, dist * 0.28);
+};
 WhaleFlow.prototype.riskColor = function () {
-    if (this.risk === 'CRITICAL') return '#ff3b3b';
-    if (this.risk === 'HIGH')     return '#ff8c00';
-    if (this.risk === 'MEDIUM')   return '#fbbf24';
-    return '#00e887';
+    if (this.risk === 'CRITICAL') return '#ff003c';   // 전기 크림슨
+    if (this.risk === 'HIGH')     return '#ff6600';   // 네온 오렌지
+    if (this.risk === 'MEDIUM')   return '#ffd700';   // 골드
+    return '#00e5ff';                                  // 전기 시안
 };
 WhaleFlow.prototype.bezier = function (t) {
     var x0 = this.from.x*W, y0 = this.from.y*H;
@@ -518,35 +650,87 @@ WhaleFlow.prototype.bezier = function (t) {
     };
 };
 WhaleFlow.prototype.draw = function (ctx) {
-    this.cpx = (this.from.x + this.to.x) / 2 * W;
-    this.cpy = Math.min(this.from.y, this.to.y) * H - H * 0.18;
-    var age     = Date.now() - this.created;
-    var opacity = Math.max(0, 1 - age / this.lifespan);
-    var color   = this.riskColor();
+    this._recalcControl();
+    var now      = Date.now();
+    var age      = now - this.created;
+    var opacity  = Math.max(0, 1 - age / this.lifespan);
+    var color    = this.riskColor();
+    var steps    = 60;
+    var maxStep  = Math.floor(this.progress * steps);
+
+    // ① 넓은 글로우 트레일
     ctx.beginPath();
     ctx.moveTo(this.from.x*W, this.from.y*H);
-    var steps = 40, maxStep = Math.floor(this.progress * steps);
     for (var i = 1; i <= maxStep; i++) {
-        var p = this.bezier(i / steps);
-        ctx.lineTo(p.x, p.y);
+        var pt0 = this.bezier(i / steps); ctx.lineTo(pt0.x, pt0.y);
     }
-    var ah = Math.floor(opacity * 144).toString(16);
-    if (ah.length < 2) ah = '0' + ah;
-    ctx.strokeStyle = color + ah;
-    ctx.lineWidth = 2;
-    ctx.shadowColor = color; ctx.shadowBlur = 8;
+    ctx.strokeStyle = color + Math.floor(opacity * 35).toString(16).padStart(2,'0');
+    ctx.lineWidth   = 8;
+    ctx.shadowColor = color; ctx.shadowBlur = 22;
     ctx.stroke(); ctx.shadowBlur = 0;
-    if (this.progress > 0) {
-        var pos = this.bezier(this.progress);
-        var g = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, 8);
-        g.addColorStop(0, color + 'cc'); g.addColorStop(1, 'transparent');
-        ctx.fillStyle = g;
-        ctx.beginPath(); ctx.arc(pos.x, pos.y, 8, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.arc(pos.x, pos.y, 3, 0, Math.PI*2);
-        ctx.fillStyle = color;
-        ctx.shadowColor = color; ctx.shadowBlur = 10;
+
+    // ② 코어 레이저 빔
+    ctx.beginPath();
+    ctx.moveTo(this.from.x*W, this.from.y*H);
+    for (var j = 1; j <= maxStep; j++) {
+        var pt1 = this.bezier(j / steps); ctx.lineTo(pt1.x, pt1.y);
+    }
+    ctx.strokeStyle = color + Math.floor(opacity * 210).toString(16).padStart(2,'0');
+    ctx.lineWidth   = 1.8;
+    ctx.shadowColor = color; ctx.shadowBlur = 16;
+    ctx.stroke(); ctx.shadowBlur = 0;
+
+    // ③ 멀티 파티클 헤드
+    var pCount = (this.risk === 'CRITICAL') ? 6 : 4;
+    for (var p = 0; p < pCount; p++) {
+        var tOff = this.progress - p * 0.045;
+        if (tOff <= 0) continue;
+        var tC   = Math.min(1, tOff);
+        var pPos = this.bezier(tC);
+        var pOp  = opacity * (1 - p * 0.18);
+        if (pOp <= 0) continue;
+        var pSz  = 3.5 - p * 0.45;
+
+        var pg = ctx.createRadialGradient(pPos.x, pPos.y, 0, pPos.x, pPos.y, 9 - p);
+        pg.addColorStop(0, color + Math.floor(pOp * 210).toString(16).padStart(2,'0'));
+        pg.addColorStop(1, 'transparent');
+        ctx.fillStyle = pg;
+        ctx.beginPath(); ctx.arc(pPos.x, pPos.y, 9 - p, 0, Math.PI*2); ctx.fill();
+
+        ctx.beginPath(); ctx.arc(pPos.x, pPos.y, Math.max(0.5, pSz), 0, Math.PI*2);
+        ctx.fillStyle = (p === 0) ? '#ffffff' : color;
+        ctx.shadowColor = color; ctx.shadowBlur = 14;
         ctx.fill(); ctx.shadowBlur = 0;
     }
+
+    // ④ 금액 레이블 (arc 중간)
+    if (this.progress > 0.45 && this.progress < 0.92 && this.amount > 0) {
+        var mid    = this.bezier(0.5);
+        var amtStr = formatNum(this.amount) + ' ETH';
+        ctx.save();
+        ctx.font      = '700 10px Monaco, monospace';
+        ctx.textAlign = 'center';
+        ctx.shadowColor = color; ctx.shadowBlur = 10;
+        ctx.fillStyle = 'rgba(255,255,255,' + (opacity * 0.92).toFixed(2) + ')';
+        ctx.fillText(amtStr, mid.x, mid.y - 10);
+        ctx.restore();
+    }
+
+    // ⑤ 도착 링 폭발
+    if (this.progress > 0.94) {
+        var boom  = (this.progress - 0.94) / 0.06;
+        var boomR = boom * 32;
+        var boomA = (1 - boom) * opacity;
+        if (boomA > 0.01) {
+            ctx.beginPath(); ctx.arc(this.to.x*W, this.to.y*H, boomR, 0, Math.PI*2);
+            ctx.strokeStyle = color + Math.floor(boomA * 220).toString(16).padStart(2,'0');
+            ctx.lineWidth = 2;
+            ctx.shadowColor = color; ctx.shadowBlur = 24;
+            ctx.stroke(); ctx.shadowBlur = 0;
+        }
+        this.to.lastActive = now;   // 허브 활성화
+    }
+
     this.progress = Math.min(1, this.progress + this.speed);
     return opacity > 0;
 };
