@@ -369,6 +369,8 @@ function resizeCanvas() {
     if (w !== W || h !== H) {
         W = c.width  = w;
         H = c.height = h;
+        c.style.width  = w + 'px';
+        c.style.height = h + 'px';
         positionHubLabels();
         console.log('[WHALE] Canvas 설정됨:', W, 'x', H);
     }
@@ -1145,6 +1147,8 @@ if (!getCvs()) {
         if (fw !== W || fh !== H) {
             W = c.width  = fw;
             H = c.height = fh;
+            c.style.width  = fw + 'px';
+            c.style.height = fh + 'px';
             positionHubLabels();
             console.warn('[WHALE] Canvas 재설정:', W, 'x', H);
         } else {
