@@ -2,6 +2,7 @@ package com.tem.quant.controller;
 
 import com.tem.quant.entity.WhaleTransaction;
 import com.tem.quant.repository.WhaleTransactionRepository;
+import com.tem.quant.service.WhaleFilterService;
 import com.tem.quant.service.WhaleWebSocketHandler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -27,6 +29,7 @@ public class WhaleMonitorController {
 
     private final WhaleTransactionRepository whaleRepository;
     private final WhaleWebSocketHandler whaleWebSocketHandler;
+    private final WhaleFilterService whaleFilterService;
 
     /** 고래 모니터링 메인 페이지 */
     @GetMapping("/whale-monitor")
@@ -71,35 +74,45 @@ public class WhaleMonitorController {
     }
 
     /**
-     * WebSocket 파이프라인 테스트용 엔드포인트
-     * 브라우저에서 GET /api/whale/test 호출 시 CRITICAL 알림을 즉시 발생시킵니다.
-     * 배포 후 파이프라인 동작 확인에 사용하세요.
+     * 풀 파이프라인 테스트 엔드포인트
+     * DB 저장 + WebSocket 알림 + ROC 인시던트 생성까지 전체 흐름을 실행합니다.
+     * GET /api/whale/test?amount=5000&risk=CRITICAL
      */
     @GetMapping("/api/whale/test")
     @ResponseBody
     public ResponseEntity<Map<String, Object>> triggerTestAlert(
-            @RequestParam(defaultValue = "CRITICAL") String risk) {
+            @RequestParam(defaultValue = "CRITICAL") String risk,
+            @RequestParam(defaultValue = "5000") double amount) {
 
-        WhaleTransaction fake = new WhaleTransaction();
-        fake.setTxHash("0xTEST_" + System.currentTimeMillis());
-        fake.setChainName("Ethereum");
-        fake.setAssetSymbol("ETH");
-        fake.setAmount(5000.0);
-        fake.setAmountUsd(5000.0 * 2400);
-        fake.setFromAddress("0x742d35Cc6634C0532925a3b844Bc454e4438f44e");
-        fake.setToAddress("0x28C6c06298d514Db089934071355E5743bf21d60");
-        fake.setFromLabel("Lazarus Group");
-        fake.setToLabel("Binance Hot Wallet");
-        fake.setFromLabelType("Hacker");
-        fake.setToLabelType("Exchange");
-        fake.setRiskLevel(risk.toUpperCase());
+        // WhaleFilterService 웹훅 포맷으로 가짜 페이로드 생성
+        // → DB 저장 + WebSocket + ROC 인시던트까지 실제 파이프라인 전체 실행
+        String fakeHash = "0xTEST" + System.currentTimeMillis();
 
-        whaleWebSocketHandler.broadcastWhaleEvent(fake);
+        // 금액에 따라 risk 무시하고 실제 임계값 로직이 적용됨
+        // amount=5000이면 CRITICAL, amount=2000이면 HIGH, amount=1000이면 MEDIUM
+        // hex: 5000 ETH = 5000 * 1e18 wei
+        java.math.BigInteger weiValue = java.math.BigDecimal.valueOf(amount)
+            .multiply(new java.math.BigDecimal("1000000000000000000"))
+            .toBigInteger();
+        String hexValue = "0x" + weiValue.toString(16);
+
+        Map<String, Object> txMap = new java.util.HashMap<>();
+        txMap.put("hash", fakeHash);
+        txMap.put("from", "0x742d35Cc6634C0532925a3b844Bc454e4438f44e");
+        txMap.put("to",   "0x28C6c06298d514Db089934071355E5743bf21d60");
+        txMap.put("value", hexValue);
+        txMap.put("blockNumber", 21000000L);
+
+        Map<String, Object> payload = new java.util.HashMap<>();
+        payload.put("data", List.of(txMap));
+
+        whaleFilterService.processEthWebhook(payload);
 
         return ResponseEntity.ok(Map.of(
-            "status", "sent",
-            "riskLevel", risk.toUpperCase(),
-            "message", "WebSocket 알림 전송 완료 — 브라우저 whale-monitor 탭 확인"
+            "status", "ok",
+            "txHash", fakeHash,
+            "amount", amount + " ETH",
+            "message", "DB 저장 + WebSocket + ROC 인시던트 파이프라인 실행 완료"
         ));
     }
 }
