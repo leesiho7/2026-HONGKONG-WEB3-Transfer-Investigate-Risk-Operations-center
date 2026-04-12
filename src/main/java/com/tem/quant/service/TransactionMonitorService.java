@@ -1,8 +1,11 @@
 package com.tem.quant.service;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
@@ -10,8 +13,6 @@ import org.web3j.protocol.Web3j;
 import org.web3j.protocol.core.methods.response.Transaction;
 import org.web3j.utils.Convert;
 
-import com.tem.quant.entity.AddressLabel;
-import com.tem.quant.entity.WhaleLog;
 import com.tem.quant.repository.AddressLabelRepository;
 import com.tem.quant.repository.WhaleLogRepository;
 
@@ -26,9 +27,11 @@ public class TransactionMonitorService {
     private final AddressLabelRepository addressLabelRepository;
     private final WhaleLogRepository whaleLogRepository;
     private final Web3j web3j;
+    private final WhaleFilterService whaleFilterService;
 
-    // 고래 기준 설정 (예: 10 ETH 이상 거래만 감지)
-    private static final BigDecimal WHALE_THRESHOLD = new BigDecimal("10");
+    // WhaleFilterService와 동일한 임계값 사용 (application.properties: whale.eth.threshold)
+    @Value("${whale.eth.threshold:1000}")
+    private double whaleThresholdEth;
 
     @EventListener(ApplicationReadyEvent.class)
     public void startMonitoring() {
@@ -38,7 +41,7 @@ public class TransactionMonitorService {
             web3j.transactionFlowable().subscribe(tx -> {
                 if (tx.getValue() != null) {
                     BigDecimal amount = Convert.fromWei(tx.getValue().toString(), Convert.Unit.ETHER);
-                    if (amount.compareTo(WHALE_THRESHOLD) >= 0) {
+                    if (amount.compareTo(BigDecimal.valueOf(whaleThresholdEth)) >= 0) {
                         processWhaleTransaction(tx, amount);
                     }
                 }
@@ -50,40 +53,29 @@ public class TransactionMonitorService {
     }
 
     private void processWhaleTransaction(Transaction tx, BigDecimal amount) {
-        // 주소 소문자 변환 및 Null 체크 (안전한 데이터 처리)
         String from = tx.getFrom() != null ? tx.getFrom().toLowerCase() : "unknown";
         String to   = tx.getTo()   != null ? tx.getTo().toLowerCase()   : "contract_creation";
 
-        // 2. 직접 구축한 라벨링 DB에서 거래소/그룹 정보 조회
-        AddressLabel fromInfo = addressLabelRepository.findById(from).orElse(null);
-        AddressLabel toInfo = addressLabelRepository.findById(to).orElse(null);
+        log.info("🐋 [Whale Alert] {} ETH 이동 감지! {} → {}", amount, getSafeAddress(from), getSafeAddress(to));
 
-        String fromLabel = (fromInfo != null) ? fromInfo.getGroupName() : "Unknown";
-        String toLabel = (toInfo != null) ? toInfo.getGroupName() : "Unknown";
-
-        // 3. 에러 방지용 안전한 주소 출력 (StringIndexOutOfBoundsException 방지)
-        String displayFrom = getSafeAddress(from);
-        String displayTo = getSafeAddress(to);
-
-        log.info("🐋 [Whale Alert] {} ETH 이동 감지!", amount);
-        log.info("출처: {} ({}) -> 목적지: {} ({})", displayFrom, fromLabel, displayTo, toLabel);
-
-        // 4. WhaleLog 엔티티 생성 및 DB 저장
+        // WhaleFilterService 포맷으로 변환하여 처리
+        // → DB 저장 + WebSocket 알림 + ROC 인시던트 생성까지 일괄 처리됨
         try {
-            WhaleLog whaleLog = WhaleLog.builder()
-                    .txHash(tx.getHash())
-                    .fromAddress(from)
-                    .toAddress(to)
-                    .fromGroupName(fromLabel)
-                    .toGroupName(toLabel)
-                    .amount(amount)
-                    .symbol("ETH")
-                    .blockTime(LocalDateTime.now())
-                    .build();
+            Map<String, Object> txMap = new HashMap<>();
+            txMap.put("hash", tx.getHash());
+            txMap.put("from", from);
+            txMap.put("to", to);
+            txMap.put("value", tx.getValue() != null ? "0x" + tx.getValue().toString(16) : "0x0");
+            if (tx.getBlockNumber() != null) {
+                txMap.put("blockNumber", tx.getBlockNumber().longValue());
+            }
 
-            whaleLogRepository.save(whaleLog);
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("data", List.of(txMap));
+
+            whaleFilterService.processEthWebhook(payload);
         } catch (Exception e) {
-            log.error("❌ 거래 로그 저장 실패: {}", e.getMessage());
+            log.error("❌ WhaleFilterService 처리 실패: {}", e.getMessage());
         }
     }
 
