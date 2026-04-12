@@ -22,7 +22,7 @@ public class OkLinkLabelService {
 
     private final WebClient webClient;
 
-    @Value("${oklink.api.key}")
+    @Value("${oklink.api.key:}")   // 미설정 시 빈 문자열 — 앱 기동은 정상, API 호출 시 401 후 Unknown 반환
     private String apiKey;
 
     // 주소 → 라벨 캐시 (프로세스 재시작 전까지 유지)

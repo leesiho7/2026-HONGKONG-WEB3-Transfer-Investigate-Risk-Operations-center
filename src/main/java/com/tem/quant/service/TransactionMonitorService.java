@@ -33,18 +33,20 @@ public class TransactionMonitorService {
     @EventListener(ApplicationReadyEvent.class)
     public void startMonitoring() {
         log.info("🚀 실시간 고래 탐지 및 라벨링 모니터링 시스템 가동...");
-
-        // 블록체인 네트워크로부터 실시간 트랜잭션 스트림 구독
-        web3j.transactionFlowable().subscribe(tx -> {
-            if (tx.getValue() != null) {
-                BigDecimal amount = Convert.fromWei(tx.getValue().toString(), Convert.Unit.ETHER);
-
-                // 1. 설정한 임계값 이상의 거래만 필터링
-                if (amount.compareTo(WHALE_THRESHOLD) >= 0) {
-                    processWhaleTransaction(tx, amount);
+        try {
+            // HTTP 프로바이더(Cloudflare fallback)는 transactionFlowable() 미지원 → 서버 크래시 방지
+            web3j.transactionFlowable().subscribe(tx -> {
+                if (tx.getValue() != null) {
+                    BigDecimal amount = Convert.fromWei(tx.getValue().toString(), Convert.Unit.ETHER);
+                    if (amount.compareTo(WHALE_THRESHOLD) >= 0) {
+                        processWhaleTransaction(tx, amount);
+                    }
                 }
-            }
-        }, error -> log.error("❌ 모니터링 중 에러 발생: ", error));
+            }, error -> log.error("❌ 모니터링 중 에러 발생: ", error));
+        } catch (Exception e) {
+            log.warn("⚠️ Web3j 스트리밍 구독 불가 (HTTP 프로바이더는 미지원). " +
+                     "QuickNode WebSocket 엔드포인트를 설정하면 실시간 모니터링이 활성화됩니다. 원인: {}", e.getMessage());
+        }
     }
 
     private void processWhaleTransaction(Transaction tx, BigDecimal amount) {
