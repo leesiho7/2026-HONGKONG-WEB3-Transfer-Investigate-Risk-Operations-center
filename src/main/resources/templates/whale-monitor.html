@@ -337,24 +337,25 @@ const CONTINENTS = [
 ];
 
 // ── Canvas 초기화 ────────────────────────────────────────────────────
-const canvas = document.getElementById('threatMap');
-if (!canvas) {
-    console.error('[WHALE] FATAL: <canvas id="threatMap"> 가 DOM에 없습니다. HTML 구조 확인 필요.');
-}
-const ctx = canvas ? canvas.getContext('2d') : null;
-// var 사용 → window.W 로 콘솔에서 접근 가능 (let은 일부 환경에서 콘솔 접근 불가)
+// var 사용 → window.W, window.canvas 등으로 콘솔에서 직접 접근 가능
+var canvas = document.getElementById('threatMap');
+var ctx    = canvas ? canvas.getContext('2d') : null;
 var W = 0, H = 0;
+
+if (!canvas) console.error('[WHALE] <canvas id="threatMap"> 가 DOM에 없음');
+if (!ctx)    console.error('[WHALE] 2D context 획득 실패');
 
 function resizeCanvas() {
     if (!canvas) return;
-    const container = canvas.parentElement;
-    const w = container.clientWidth  || container.offsetWidth;
-    const h = container.clientHeight || container.offsetHeight;
-    if (w > 0 && h > 0) {
+    var cont = canvas.parentElement;
+    // clientWidth → offsetWidth → 뷰포트 기반 추산 순으로 폴백
+    var w = cont.clientWidth  || cont.offsetWidth  || Math.max(window.innerWidth  - 620, 400);
+    var h = cont.clientHeight || cont.offsetHeight || Math.max(window.innerHeight - 116, 300);
+    if (w !== W || h !== H) {
         W = canvas.width  = w;
         H = canvas.height = h;
         positionHubLabels();
-        console.log('[WHALE] Canvas 크기 설정:', W, 'x', H);
+        console.log('[WHALE] Canvas 설정됨:', W, 'x', H);
     }
 }
 
