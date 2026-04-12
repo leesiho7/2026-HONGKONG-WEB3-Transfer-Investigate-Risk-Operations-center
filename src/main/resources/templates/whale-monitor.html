@@ -375,8 +375,19 @@ function positionHubLabels() {
 }
 
 // ── Canvas Render Loop ────────────────────────────────────────────────
+let _drawWarnOnce = false;
 function drawFrame() {
-    if (!W || !H) { resizeCanvas(); requestAnimationFrame(drawFrame); return; }
+    if (!W || !H) {
+        resizeCanvas();
+        if (!_drawWarnOnce) {
+            _drawWarnOnce = true;
+            console.warn('drawFrame: W/H=0, waiting... container=',
+                canvas.parentElement.clientWidth, 'x', canvas.parentElement.clientHeight);
+        }
+        requestAnimationFrame(drawFrame);
+        return;
+    }
+    _drawWarnOnce = false;
     ctx.clearRect(0, 0, W, H);
     drawBackground();
     drawContinents();
@@ -993,32 +1004,25 @@ function randomHub() {
 }
 
 // ── 초기화 ────────────────────────────────────────────────────────────
+// 스크립트는 <body> 맨 아래에 위치 → DOM 완전히 구성됨 → 즉시 실행 가능
 renderActivityGrid();
+resizeCanvas();         // 즉시 크기 측정 시도
+drawFrame();            // 렌더 루프 시작 (W=0이면 guard가 RAF로 재시도)
+connectWebSocket();     // WebSocket 연결
+setTimeout(startDemoMode, 1500); // 1.5초 후 데모 시작
 
-function _startApp() {
-    resizeCanvas();
-    drawFrame();        // Canvas 렌더 루프 시작
-    connectWebSocket(); // WebSocket 연결
-    setTimeout(startDemoMode, 1500);
-
-    // 안전망: 2초 후에도 캔버스 크기가 0이면 뷰포트 기준으로 강제 설정
-    setTimeout(() => {
-        if (!W || !H) {
-            const container = canvas.parentElement;
-            W = canvas.width  = container.offsetWidth  || (window.innerWidth  - 630);
-            H = canvas.height = container.offsetHeight || (window.innerHeight - 116);
-            positionHubLabels();
-            console.warn('⚠️ Canvas 크기 강제 설정:', W, 'x', H);
-        }
-    }, 2000);
-}
-
-// 이미 load 완료됐으면 즉시 실행, 아니면 load 이벤트 대기
-if (document.readyState === 'complete') {
-    _startApp();
-} else {
-    window.addEventListener('load', _startApp);
-}
+// 안전망: 500ms 후에도 W=0이면 뷰포트 크기 기준으로 강제 설정
+setTimeout(() => {
+    if (!W || !H) {
+        const c = canvas.parentElement;
+        W = canvas.width  = c.offsetWidth  || Math.max(window.innerWidth  - 630, 400);
+        H = canvas.height = c.offsetHeight || Math.max(window.innerHeight - 116, 300);
+        positionHubLabels();
+        console.warn('⚠️ Canvas fallback 크기 적용:', W, 'x', H);
+    } else {
+        console.log('✅ Canvas 정상:', W, 'x', H);
+    }
+}, 500);
 
 </script>
 </body>
