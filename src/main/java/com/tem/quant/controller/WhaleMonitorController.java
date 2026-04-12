@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 
@@ -30,7 +31,8 @@ public class WhaleMonitorController {
     public String whaleMonitor(Model model) {
         List<WhaleTransaction> recent = whaleRepository.findTop20ByOrderByDetectedAtDesc();
 
-        Double ethVol      = whaleRepository.sumEthLast24h();
+        LocalDateTime since24h = LocalDateTime.now().minus(1, ChronoUnit.DAYS);
+        Double ethVol      = whaleRepository.sumEthLast24h(since24h);
         long criticalCount = whaleRepository.countByRiskLevel("CRITICAL");
 
         model.addAttribute("recentWhales",  recent);
