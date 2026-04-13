@@ -42,7 +42,12 @@ public class Web3Incident {
     private Boolean criticalExchange; // 알려진 거래소 지갑과 연관 여부
 
     // 인시던트 타입 (UI 분류용)
-    private String incidentType;     // "Massive Whale Transfer" | "Whale Dump Detected" | "Liquidity Removal" | "Unusual Exchange Inflow"
+    private String incidentType;     // "Massive Whale Transfer" | "OTC Trade" | "Mixer Deposit" | "Unusual Exchange Inflow" | ...
+
+    // Arkham Intelligence 분류 (Enterprise)
+    private String transactionCategory; // EXCHANGE_INFLOW | OTC_TRADE | MIXER_DEPOSIT | MIXER_WITHDRAWAL | DARKNET | ...
+    private String arkhamEntityFrom;    // Arkham 식별 발신 엔티티
+    private String arkhamEntityTo;      // Arkham 식별 수신 엔티티
 
     // Template compatibility getters
     public String getAddress() { return fromAddress; }
@@ -56,6 +61,13 @@ public class Web3Incident {
             case "Whale Dump Detected"     -> "📉";
             case "Liquidity Removal"       -> "💧";
             case "Unusual Exchange Inflow" -> "🏦";
+            case "Exchange Outflow"        -> "📤";
+            case "OTC Trade"               -> "🤝";
+            case "Mixer Deposit"           -> "🌀";
+            case "Mixer Withdrawal"        -> "🌀";
+            case "Darknet Activity"        -> "☠";
+            case "DeFi Interaction"        -> "⚡";
+            case "Bridge Transfer"         -> "🌉";
             default -> "⚠";
         };
     }
@@ -68,6 +80,13 @@ public class Web3Incident {
             case "Whale Dump Detected"     -> "whale-dump";
             case "Liquidity Removal"       -> "liquidity";
             case "Unusual Exchange Inflow" -> "exchange-inflow";
+            case "Exchange Outflow"        -> "exchange-outflow";
+            case "OTC Trade"               -> "otc-trade";
+            case "Mixer Deposit"           -> "mixer";
+            case "Mixer Withdrawal"        -> "mixer";
+            case "Darknet Activity"        -> "darknet";
+            case "DeFi Interaction"        -> "defi";
+            case "Bridge Transfer"         -> "bridge";
             default -> "unknown";
         };
     }

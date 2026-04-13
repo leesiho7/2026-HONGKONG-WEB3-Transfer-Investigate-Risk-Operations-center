@@ -40,6 +40,11 @@ public class WhaleTransaction {
     // 위험 분류
     private String riskLevel;       // "CRITICAL" | "HIGH" | "MEDIUM" | "INFO"
 
+    // Arkham Intelligence 분류 (Enterprise)
+    private String transactionCategory; // EXCHANGE_INFLOW | OTC_TRADE | MIXER_DEPOSIT | ...
+    private String arkhamEntityFrom;    // Arkham 식별 발신 엔티티명
+    private String arkhamEntityTo;      // Arkham 식별 수신 엔티티명
+
     private Long blockNumber;
     private LocalDateTime detectedAt;
 
