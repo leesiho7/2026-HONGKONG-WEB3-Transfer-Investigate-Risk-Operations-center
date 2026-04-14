@@ -577,3 +577,193 @@ body::after {
     60%  { transform: translateX(-4px) scale(1.02); }
     100% { opacity: 1; transform: translateX(0) scale(1); }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MOBILE RESPONSIVE  ≤ 768px
+   홍콩 Web3 네트워킹 — 폰에서 바로 보여줄 수 있도록
+═══════════════════════════════════════════════════════════════════════ */
+
+/* 모바일 전용 요소: 데스크톱에서 숨김 */
+.mobile-kpi-bar { display: none; }
+.mobile-tabs    { display: none; }
+
+@media (max-width: 768px) {
+
+  /* ── 루트 레이아웃 ─────────────────────────────────────────────── */
+  html, body { overflow: hidden; height: 100%; height: 100dvh; }
+
+  .app-shell {
+    height: 100vh;
+    height: 100dvh; /* dynamic viewport height — iOS Safari 주소창 대응 */
+    overflow: hidden;
+  }
+
+  /* ── 상단 바 compact ──────────────────────────────────────────── */
+  .top-bar {
+    height: auto;
+    min-height: 44px;
+    padding: 6px 12px;
+    gap: 0;
+    flex-wrap: nowrap;
+    justify-content: space-between;
+  }
+  .top-bar-stats  { display: none; } /* KPI bar로 대체 */
+  .operator-chip  { display: none; }
+  .brand-sub      { display: none; }
+  #liveClock      { display: none; }
+  .brand-name     { font-size: 12px; letter-spacing: 2px; }
+  .brand-icon     { width: 28px; height: 28px; font-size: 14px; }
+  .top-bar-right  { gap: 10px; }
+  .top-bar-right a { padding: 4px 8px; font-size: 10px; }
+
+  /* ── 모바일 KPI 바 ──────────────────────────────────────────────
+     ticker 자리 대신 핵심 지표 4개를 한 줄로 표시             */
+  .mobile-kpi-bar {
+    display: flex !important;
+    height: 34px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+  .mkpi {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    border-right: 1px solid var(--border);
+  }
+  .mkpi:last-child { border-right: none; }
+  .mkpi-v {
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--text-1);
+  }
+  .mkpi-v.eth-c  { color: #627eea; }
+  .mkpi-v.red-c  { color: var(--red); }
+  .mkpi-v.ora-c  { color: var(--orange); }
+  .mkpi-v.grn-c  { color: var(--green); }
+  .mkpi-l {
+    font-size: 7px;
+    color: var(--text-3);
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+  }
+
+  /* ── 티커 숨김 (모바일에서 KPI 바로 대체) ────────────────────── */
+  .ticker-bar-mobile-hide { display: none !important; }
+
+  /* ── 모바일 탭 바 ────────────────────────────────────────────── */
+  .mobile-tabs {
+    display: flex !important;
+    height: 40px;
+    background: var(--bg-void);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .mobile-tab {
+    flex: 1;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-3);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+    padding: 0 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+  }
+  .mobile-tab .tab-icon { font-size: 14px; line-height: 1; }
+  .mobile-tab .tab-lbl  { font-size: 8px; }
+  .mobile-tab.active {
+    color: var(--green);
+    border-bottom-color: var(--green);
+  }
+
+  /* ── 패널 — 탭 전환 제어 ─────────────────────────────────────── */
+  .main-layout {
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .feed-panel,
+  .map-panel,
+  .tools-panel {
+    display: none;
+    width: 100% !important;
+    border: none !important;
+    flex-shrink: 0;
+    min-height: 0;
+  }
+
+  .feed-panel.m-active,
+  .map-panel.m-active,
+  .tools-panel.m-active {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .tools-panel.m-active {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  /* ── 하단 바 compact ─────────────────────────────────────────── */
+  .bottom-bar {
+    height: auto;
+    min-height: 32px;
+    padding: 4px 10px;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+    font-size: 9px;
+  }
+  .separator { display: none; }
+  .bottom-stat .key { display: none; } /* 모바일에선 값만 */
+  .bottom-stat .val { font-size: 10px; }
+  .bottom-stat::before {
+    font-size: 8px;
+    color: var(--text-3);
+    letter-spacing: 0.5px;
+  }
+  .bottom-stat.green::before { content: 'FLOWS '; }
+  .bottom-stat.eth::before   { content: 'ETH '; }
+  .bottom-stat.red::before   { content: 'CRIT '; }
+  .bottom-stat.blue::before  { content: 'WS '; }
+
+  /* ── 카드 터치 최적화 ────────────────────────────────────────── */
+  .whale-card  { padding: 12px 14px; margin-bottom: 8px; }
+  .whale-amount { font-size: 18px; }
+  .whale-flow   { font-size: 11px; }
+  .addr         { font-size: 11px; }
+
+  /* ── 툴 패널 터치 최적화 ──────────────────────────────────────── */
+  .tool-section  { padding: 14px 16px; }
+  .lookup-input  { font-size: 15px; padding: 10px 12px; }
+  .lookup-btn    { padding: 12px; font-size: 12px; }
+  .chain-btn     { padding: 9px; font-size: 12px; }
+  .chain-name    { font-size: 12px; }
+  .chain-vol     { font-size: 12px; }
+  .big-num       { font-size: 32px; }
+
+  /* ── 토스트 — 화면 하단 전체 폭 ─────────────────────────────── */
+  .toast-container {
+    right: 12px;
+    left: 12px;
+    bottom: 52px;
+  }
+  .toast { max-width: 100%; font-size: 12px; }
+}
+

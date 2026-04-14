@@ -63,8 +63,8 @@
         </div>
     </header>
 
-    <!-- ── TICKER ────────────────────────────────────────────────────── -->
-    <div style="height:22px; background:var(--bg-void); border-bottom:1px solid var(--border); overflow:hidden; padding:0 8px;">
+    <!-- ── TICKER (데스크톱용 — 모바일에서 KPI 바로 대체) ──────────── -->
+    <div class="ticker-bar-mobile-hide" style="height:22px; background:var(--bg-void); border-bottom:1px solid var(--border); overflow:hidden; padding:0 8px;">
         <div class="ticker-wrap">
             <div class="ticker-inner" id="tickerInner">
                 <span class="ticker-item">ETH <span class="t-up">$2,384.50 ▲1.2%</span></span>
@@ -79,11 +79,47 @@
         </div>
     </div>
 
+    <!-- ── 모바일 KPI 바 ─────────────────────────────────────────────── -->
+    <div class="mobile-kpi-bar">
+        <div class="mkpi">
+            <span class="mkpi-v eth-c" id="mKpiEth" th:text="${eth24hVolume}">0</span>
+            <span class="mkpi-l">ETH 24H</span>
+        </div>
+        <div class="mkpi">
+            <span class="mkpi-v red-c" id="mKpiCrit" th:text="${criticalCount}">0</span>
+            <span class="mkpi-l">CRITICAL</span>
+        </div>
+        <div class="mkpi">
+            <span class="mkpi-v ora-c" id="mKpiThreat">HIGH</span>
+            <span class="mkpi-l">THREAT</span>
+        </div>
+        <div class="mkpi">
+            <span class="mkpi-v grn-c" id="mKpiWs">LIVE</span>
+            <span class="mkpi-l">STREAM</span>
+        </div>
+    </div>
+
+    <!-- ── 모바일 탭 바 ───────────────────────────────────────────────── -->
+    <nav class="mobile-tabs">
+        <button class="mobile-tab" id="tab-feed" onclick="switchTab('feed')">
+            <span class="tab-icon">🐋</span>
+            <span class="tab-lbl">FEED</span>
+        </button>
+        <button class="mobile-tab active" id="tab-map" onclick="switchTab('map')">
+            <span class="tab-icon">🗺</span>
+            <span class="tab-lbl">MAP</span>
+        </button>
+        <button class="mobile-tab" id="tab-tools" onclick="switchTab('tools')">
+            <span class="tab-icon">⬡</span>
+            <span class="tab-lbl">INTEL</span>
+        </button>
+    </nav>
+
     <!-- ── MAIN LAYOUT ────────────────────────────────────────────────── -->
     <div class="main-layout">
 
         <!-- ────────────────── LEFT: WHALE FEED ─────────────────────── -->
-        <aside class="feed-panel">
+        <aside class="feed-panel" id="panel-feed">
             <div class="panel-header">
                 <span class="panel-title">Real-Time Whale Feed</span>
                 <span class="panel-badge live" id="feedCount">0 ALERTS</span>
@@ -133,7 +169,7 @@
         </aside>
 
         <!-- ────────────────── CENTER: WORLD MAP ─────────────────────── -->
-        <main class="map-panel">
+        <main class="map-panel" id="panel-map">
             <div class="map-container">
                 <canvas id="threatMap"></canvas>
                 <div class="threat-flash" id="threatFlash"></div>
@@ -172,7 +208,7 @@
         </main>
 
         <!-- ────────────────── RIGHT: TOOLS ──────────────────────────── -->
-        <aside class="tools-panel">
+        <aside class="tools-panel" id="panel-tools">
 
             <!-- Address Lookup -->
             <div class="tool-section">
@@ -281,7 +317,7 @@
 <!-- ═══════════════════════ JAVASCRIPT ════════════════════════════════ -->
 <!-- 서버 데이터를 data-* 속성으로 전달 -->
 <div id="roc-whale-data"
-     th:attr="data-critical=${criticalCount}"
+     th:attr="data-critical=${criticalCount},data-eth24h=${eth24hVolume}"
      style="display:none"></div>
 
 <script th:inline="none">
@@ -297,7 +333,7 @@
 var _dataEl = document.getElementById('roc-whale-data');
 var State = {
     feedCount:     0,
-    ethVolume:     0,
+    ethVolume:     parseFloat((_dataEl ? _dataEl.getAttribute('data-eth24h') : '0') || '0'),
     btcVolume:     0,
     criticalCount: (_dataEl ? parseInt(_dataEl.getAttribute('data-critical'), 10) : 0) || 0,
     totalAlerts:   0,
@@ -305,7 +341,6 @@ var State = {
     threatLevel:   72,
     selectedChain: 'eth',
     flows:         [],
-    demoMode:      true,
 };
 
 // ── 세계 금융 허브 위치 (normalized 0–1) ─────────────────────────────
@@ -794,12 +829,8 @@ function connectWebSocket() {
         console.log('[WHALE] WebSocket 연결됨');
 
         stomp.subscribe('/topic/whale-alerts', function (msg) {
-            if (State.demoMode) {
-                State.demoMode = false;
-                console.log('[WHALE] 실데이터 수신 — 데모 모드 비활성화');
-                var ms = document.getElementById('mapStatus');
-                if (ms) ms.textContent = '● LIVE: QUICKNODE DATA';
-            }
+            var ms = document.getElementById('mapStatus');
+            if (ms) ms.textContent = '● LIVE: QUICKNODE DATA';
             handleWhaleAlert(JSON.parse(msg.body));
         });
 
@@ -833,8 +864,11 @@ function handleWhaleAlert(whale) {
     else if (whale.riskLevel === 'HIGH') { showToast(whale, false); }
 
     State.ethVolume += whale.amount || 0;
-    var barEth = document.getElementById('barEthVol');
-    if (barEth) barEth.textContent = formatNum(State.ethVolume) + ' ETH';
+    var volStr = formatNum(State.ethVolume) + ' ETH';
+    var barEth  = document.getElementById('barEthVol');
+    var statEth = document.getElementById('statEthVol');
+    if (barEth)  barEth.textContent  = volStr;
+    if (statEth) statEth.textContent = volStr;
 
     if (whale.riskLevel === 'CRITICAL') {
         State.criticalCount++;
@@ -849,6 +883,7 @@ function handleWhaleAlert(whale) {
     var fc = document.getElementById('feedCount'), ta = document.getElementById('totalAlerts');
     if (fc) fc.textContent = State.feedCount + ' ALERTS';
     if (ta) ta.textContent = State.totalAlerts;
+    syncMobileKpi();
 
     updateThreatLevel(whale.riskLevel);
     updateActivityGrid();
@@ -1064,46 +1099,6 @@ function updateClock() {
 setInterval(updateClock, 1000);
 updateClock();
 
-// ── Demo Mode ─────────────────────────────────────────────────────────
-var DEMO_SCENARIOS = [
-    { exchange:'HashKey Exchange',  type:'Exchange', risk:'CRITICAL' },
-    { exchange:'OKX Hot Wallet',    type:'Exchange', risk:'CRITICAL' },
-    { exchange:'Binance Hot Wallet',type:'Exchange', risk:'HIGH'     },
-    { exchange:'Coinbase Prime',    type:'Exchange', risk:'HIGH'     },
-    { exchange:'Unknown Whale',     type:'Whale',    risk:'HIGH'     },
-    { exchange:'Uniswap V3 Pool',   type:'DeFi',     risk:'MEDIUM'  },
-];
-function generateDemoWhale() {
-    var s = DEMO_SCENARIOS[Math.floor(Math.random() * DEMO_SCENARIOS.length)];
-    var amount = Math.round((1000 + Math.random() * 9000) * 10) / 10;
-    return {
-        txHash:       '0x' + Math.random().toString(16).substring(2,18) + '...',
-        chainName:    'Ethereum', assetSymbol: 'ETH',
-        amount:       amount,    amountUsd:   amount * 2400,
-        fromAddress:  '0x' + Math.random().toString(16).substring(2,42),
-        toAddress:    '0x' + Math.random().toString(16).substring(2,42),
-        fromLabel:    Math.random() > 0.6 ? 'Unknown' : 'Whale Wallet',
-        toLabel:      s.exchange, fromLabelType: 'Unknown', toLabelType: s.type,
-        riskLevel:    s.risk,
-    };
-}
-function startDemoMode() {
-    if (!State.demoMode) return;
-    console.log('[WHALE] Demo mode 시작');
-    for (var i = 0; i < 5; i++) {
-        (function(n) { setTimeout(function() { if (State.demoMode) handleWhaleAlert(generateDemoWhale()); }, n * 600); })(i);
-    }
-    function scheduleNext() {
-        if (!State.demoMode) return;
-        setTimeout(function() {
-            if (!State.demoMode) return;
-            handleWhaleAlert(generateDemoWhale());
-            scheduleNext();
-        }, 8000 + Math.random() * 12000);
-    }
-    scheduleNext();
-}
-
 // ── 유틸 ─────────────────────────────────────────────────────────────
 function formatNum(n) {
     if (!n && n !== 0) return '\u2014';
@@ -1157,8 +1152,57 @@ if (!getCvs()) {
     }, 600);
 }
 
+// ── 하단 바 + 모바일 KPI 실데이터 초기화 ────────────────────────────
+(function initLiveStats() {
+    var barEth  = document.getElementById('barEthVol');
+    var barCrit = document.getElementById('barCritical');
+    if (barEth)  barEth.textContent  = formatNum(State.ethVolume) + ' ETH';
+    if (barCrit) barCrit.textContent = State.criticalCount;
+    syncMobileKpi();
+}());
+
+// ── 모바일 탭 전환 ─────────────────────────────────────────────────────
+function switchTab(name) {
+    var PANELS = { feed: 'panel-feed', map: 'panel-map', tools: 'panel-tools' };
+    var TABS   = { feed: 'tab-feed',   map: 'tab-map',   tools: 'tab-tools'   };
+    Object.keys(PANELS).forEach(function(k) {
+        var p = document.getElementById(PANELS[k]);
+        var t = document.getElementById(TABS[k]);
+        if (p) p.classList.toggle('m-active', k === name);
+        if (t) t.classList.toggle('active',   k === name);
+    });
+    if (name === 'map') {
+        requestAnimationFrame(function() {
+            if (window.resizeCanvas) window.resizeCanvas();
+        });
+    }
+}
+window.switchTab = switchTab;
+
+// ── 모바일 KPI 바 동기화 ───────────────────────────────────────────────
+function syncMobileKpi() {
+    var me = document.getElementById('mKpiEth');
+    var mc = document.getElementById('mKpiCrit');
+    if (me) me.textContent = formatNum(State.ethVolume);
+    if (mc) mc.textContent = State.criticalCount;
+}
+
+// ── 모바일 초기화: 맵 탭 기본 활성화 ─────────────────────────────────
+if (window.innerWidth <= 768) {
+    switchTab('map');
+}
+
+// 화면 방향 전환(가로/세로) 시 캔버스 재측정
+window.addEventListener('orientationchange', function() {
+    setTimeout(function() {
+        var active = document.querySelector('.mobile-tab.active');
+        if (active && active.id === 'tab-map' && window.resizeCanvas) {
+            window.resizeCanvas();
+        }
+    }, 300);
+});
+
 connectWebSocket();
-setTimeout(startDemoMode, 1500);
 
 }());
 </script>

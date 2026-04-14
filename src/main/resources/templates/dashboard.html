@@ -12,6 +12,9 @@
 </head>
 <body>
     <!-- alert sound generated via Web Audio API — no file needed -->
+    <!-- 모바일 사이드바 백드롭 -->
+    <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeSidebar()"></div>
+
     <div class="app-container">
         <!-- Sidebar -->
         <aside class="sidebar" id="sidebar">
@@ -75,6 +78,8 @@
         <div class="main-content">
             <!-- Header -->
             <header class="header">
+                <!-- 모바일 햄버거 버튼 -->
+                <button class="btn-hamburger" onclick="openSidebar()" aria-label="Open menu">☰</button>
                 <div class="header-left">
                     <div class="app-logo">
                         <div class="logo-icon">
@@ -318,6 +323,7 @@
                                 <p class="text-muted">5 active cases • Sorted by priority</p>
                             </div>
                         </div>
+                        <div class="table-scroll-wrap">
                         <table class="incidents-table">
                             <thead>
                                 <tr>
@@ -354,6 +360,7 @@
                                 </tr>
                             </tbody>
                         </table>
+                        </div>
                     </div>
                 </div>
             </main>
@@ -373,9 +380,21 @@ let criticalCount = 0;
 let notificationCount = 3;
 
 // ── 1. 사이드바 / 케이스 액션 ─────────────────────────────────────────
+function openSidebar() {
+    document.getElementById('sidebar').classList.add('open');
+    document.getElementById('sidebarBackdrop').classList.add('show');
+}
+function closeSidebar() {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebarBackdrop').classList.remove('show');
+}
 function toggleSidebar() {
     const sidebar = document.getElementById('sidebar');
-    sidebar.style.display = (sidebar.style.display === 'none') ? 'flex' : 'none';
+    if (window.innerWidth <= 768) {
+        sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+    } else {
+        sidebar.style.display = (sidebar.style.display === 'none') ? 'flex' : 'none';
+    }
 }
 
 /** Create Case → 해당 케이스 상세 페이지로 이동 */
