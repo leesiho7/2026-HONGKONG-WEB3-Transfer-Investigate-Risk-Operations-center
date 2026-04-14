@@ -63,18 +63,27 @@
         </div>
     </header>
 
-    <!-- ── TICKER (데스크톱용 — 모바일에서 KPI 바로 대체) ──────────── -->
+    <!-- ── TICKER — DB 실 고래 이체 이력 (데스크톱 전용) ─────────────── -->
     <div class="ticker-bar-mobile-hide" style="height:22px; background:var(--bg-void); border-bottom:1px solid var(--border); overflow:hidden; padding:0 8px;">
         <div class="ticker-wrap">
             <div class="ticker-inner" id="tickerInner">
-                <span class="ticker-item">ETH <span class="t-up">$2,384.50 ▲1.2%</span></span>
-                <span class="ticker-item">BTC <span class="t-up">$63,200 ▲0.8%</span></span>
-                <span class="ticker-item">WHALE ALERT: 1,250 ETH → Binance Hot Wallet | 2m ago</span>
-                <span class="ticker-item">BTC MOVEMENT: 150 BTC from Unknown | 5m ago</span>
-                <span class="ticker-item">ETH <span class="t-up">$2,384.50 ▲1.2%</span></span>
-                <span class="ticker-item">BTC <span class="t-up">$63,200 ▲0.8%</span></span>
-                <span class="ticker-item">WHALE ALERT: 1,250 ETH → Binance Hot Wallet | 2m ago</span>
-                <span class="ticker-item">BTC MOVEMENT: 150 BTC from Unknown | 5m ago</span>
+                <!-- Thymeleaf: DB 최근 고래 이체 내역 (초기 1세트 — JS가 복제해 루프) -->
+                <th:block th:each="w : ${recentWhales}">
+                    <span class="ticker-item"
+                          th:with="
+                            riskCss=${w.riskLevel == 'CRITICAL'} ? 't-down' : (${w.riskLevel == 'HIGH'} ? 't-warn' : 't-up'),
+                            catIcon=${w.transactionCategory == 'MIXER_DEPOSIT' or w.transactionCategory == 'MIXER_WITHDRAWAL'} ? '🌀 ' : (${w.transactionCategory == 'OTC_TRADE'} ? '🤝 ' : (${w.transactionCategory == 'DARKNET'} ? '☠ ' : '🐋 ')),
+                            toName=${w.toLabel != null and w.toLabel != 'Unknown'} ? ${w.toLabel} : 'Unknown Wallet',
+                            usd=${w.amountUsd != null} ? (' ≈ $' + ${#numbers.formatDecimal(w.amountUsd / 1000000.0, 1, 'COMMA', 1, 'POINT')} + 'M') : ''">
+                        <span th:class="${riskCss}"
+                              th:text="${catIcon + #numbers.formatDecimal(w.amount, 1, 'COMMA', 1, 'POINT') + ' ETH → ' + toName + ' | ' + w.timeAgo + usd}">
+                        </span>
+                    </span>
+                </th:block>
+                <!-- DB 데이터 없을 때 placeholder -->
+                <span th:if="${#lists.isEmpty(recentWhales)}" class="ticker-item" style="color:var(--text-3);">
+                    🐋 Waiting for whale movements... QuickNode stream monitoring ETH Mainnet
+                </span>
             </div>
         </div>
     </div>
@@ -299,7 +308,7 @@
                     <span style="color:var(--green);font-size:10px;" id="wsStatus">● CONNECTED</span>
                 </div>
                 <div class="chain-stat-row">
-                    <span class="chain-name">OKLink API</span>
+                    <span class="chain-name">Arkham API</span>
                     <span style="color:var(--green);font-size:10px;">● ACTIVE</span>
                 </div>
                 <div class="chain-stat-row">
@@ -341,6 +350,7 @@ var State = {
     threatLevel:   72,
     selectedChain: 'eth',
     flows:         [],
+    demoMode:      true,   // 실데이터 수신 시 자동 false 전환
 };
 
 // ── 세계 금융 허브 위치 (normalized 0–1) ─────────────────────────────
@@ -829,8 +839,12 @@ function connectWebSocket() {
         console.log('[WHALE] WebSocket 연결됨');
 
         stomp.subscribe('/topic/whale-alerts', function (msg) {
-            var ms = document.getElementById('mapStatus');
-            if (ms) ms.textContent = '● LIVE: QUICKNODE DATA';
+            if (State.demoMode) {
+                State.demoMode = false; // 실데이터 첫 수신 → 데모 자동 종료
+                console.log('[WHALE] 실데이터 수신 — 시연 모드 종료');
+                var ms = document.getElementById('mapStatus');
+                if (ms) ms.textContent = '● LIVE: QUICKNODE DATA';
+            }
             handleWhaleAlert(JSON.parse(msg.body));
         });
 
@@ -901,6 +915,7 @@ function addFeedCard(whale) {
     var usdVal   = whale.amountUsd   ? '\u2248 $' + formatMoney(whale.amountUsd) : '';
     var sym      = whale.assetSymbol || 'ETH';
     var chainPill = '<span class="label-pill chain-' + sym.toLowerCase() + '">' + sym + '</span>';
+    var catBadge  = makeCategoryBadge(whale.transactionCategory);
     var html = '<div class="whale-card ' + risk + '">'
         + '<div class="whale-card-top">'
         + '<div class="whale-amount">' + formatNum(whale.amount) + ' ' + sym + '</div>'
@@ -908,6 +923,7 @@ function addFeedCard(whale) {
         + '<span class="risk-badge ' + risk + '">' + (whale.riskLevel||'INFO') + '</span>'
         + '<span class="whale-time">JUST NOW</span>'
         + '</div></div>'
+        + (catBadge ? '<div style="margin-bottom:5px;">' + catBadge + '</div>' : '')
         + '<div class="whale-flow"><span class="addr">' + fromAddr + '</span>'
         + '<span class="arrow">\u2192</span>'
         + '<span class="addr">' + toAddr + '</span></div>'
@@ -919,6 +935,29 @@ function addFeedCard(whale) {
     feed.insertAdjacentHTML('afterbegin', html);
     var cards = feed.querySelectorAll('.whale-card');
     if (cards.length > 50) cards[cards.length-1].remove();
+}
+
+function makeCategoryBadge(category) {
+    if (!category) return '';
+    var META = {
+        'EXCHANGE_INFLOW':  { icon:'🏦', label:'Exchange Inflow',  color:'#a855f7' },
+        'EXCHANGE_OUTFLOW': { icon:'📤', label:'Exchange Outflow', color:'#0ea5e9' },
+        'OTC_TRADE':        { icon:'🤝', label:'OTC Trade',        color:'#f59e0b' },
+        'MIXER_DEPOSIT':    { icon:'🌀', label:'Mixer Deposit',    color:'#ef4444' },
+        'MIXER_WITHDRAWAL': { icon:'🌀', label:'Mixer Withdrawal', color:'#ef4444' },
+        'WHALE_MOVEMENT':   { icon:'🐋', label:'Whale Movement',   color:'#fbbf24' },
+        'DEFI_INTERACTION': { icon:'⚡', label:'DeFi',             color:'#10b981' },
+        'BRIDGE_TRANSFER':  { icon:'🌉', label:'Bridge',           color:'#06b6d4' },
+        'DARKNET':          { icon:'☠',  label:'Darknet',          color:'#dc2626' },
+    };
+    var m = META[category];
+    if (!m) return '';
+    return '<span style="display:inline-flex;align-items:center;gap:3px;'
+        + 'font-size:8px;font-weight:700;letter-spacing:0.8px;'
+        + 'padding:2px 6px;border-radius:3px;'
+        + 'background:' + m.color + '22;color:' + m.color + ';'
+        + 'border:1px solid ' + m.color + '55;">'
+        + m.icon + ' ' + m.label + '</span>';
 }
 
 function makeLabelPill(label, type) {
@@ -1079,16 +1118,51 @@ var _la = document.getElementById('lookupAddr');
 if (_la) { _la.addEventListener('keydown', function(e) { if (e.key === 'Enter') performLookup(); }); }
 
 // ── Ticker ────────────────────────────────────────────────────────────
+var tickerQueue = []; // 실시간 WebSocket 데이터 큐 (최대 20개)
+
+var CAT_ICON = {
+    MIXER_DEPOSIT:'🌀', MIXER_WITHDRAWAL:'🌀',
+    OTC_TRADE:'🤝', DARKNET:'☠',
+    EXCHANGE_INFLOW:'📥', EXCHANGE_OUTFLOW:'📤',
+    BRIDGE_TRANSFER:'🌉', DEFI_INTERACTION:'⚡',
+    WHALE_MOVEMENT:'🐋', UNKNOWN:'🐋'
+};
+
+function initTicker() {
+    var inner = document.getElementById('tickerInner');
+    if (!inner) return;
+    var items = inner.querySelectorAll('.ticker-item');
+    if (items.length === 0) return; // placeholder 있는 경우 그대로 둠
+    // Thymeleaf 렌더링된 아이템을 복제하여 seamless 루프 구성 (-50% 애니메이션)
+    Array.from(items).forEach(function(item) {
+        inner.appendChild(item.cloneNode(true));
+    });
+}
+
 function addTickerItem(whale) {
     var inner = document.getElementById('tickerInner');
     if (!inner) return;
-    var item = document.createElement('span');
-    item.className = 'ticker-item';
-    item.innerHTML = 'WHALE: <span class="' + (whale.riskLevel==='CRITICAL'?'t-down':'t-up') + '">'
-        + formatNum(whale.amount) + ' ' + (whale.assetSymbol||'ETH') + '</span> \u2192 '
-        + (whale.toLabel||'Unknown') + ' | just now';
-    inner.appendChild(item.cloneNode(true));
-    inner.appendChild(item);
+
+    var cat     = whale.transactionCategory || whale.category || 'UNKNOWN';
+    var icon    = CAT_ICON[cat] || '🐋';
+    var riskCss = whale.riskLevel === 'CRITICAL' ? 't-down' : (whale.riskLevel === 'HIGH' ? 't-warn' : 't-up');
+    var dest    = (whale.toLabel && whale.toLabel !== 'Unknown') ? whale.toLabel : 'Unknown Wallet';
+    var usd     = whale.amountUsd ? ' ≈ $' + (whale.amountUsd / 1e6).toFixed(1) + 'M' : '';
+    var text    = icon + ' ' + formatNum(whale.amount) + ' ETH → ' + dest + ' | just now' + usd;
+
+    tickerQueue.unshift({ riskCss: riskCss, text: text });
+    if (tickerQueue.length > 20) tickerQueue.pop();
+
+    // 큐 기반 재렌더링 — 2× 복제로 seamless 루프 유지
+    inner.innerHTML = '';
+    [0, 1].forEach(function() {
+        tickerQueue.forEach(function(entry) {
+            var span = document.createElement('span');
+            span.className = 'ticker-item';
+            span.innerHTML = '<span class="' + entry.riskCss + '">' + entry.text + '</span>';
+            inner.appendChild(span);
+        });
+    });
 }
 
 // ── Live Clock ────────────────────────────────────────────────────────
@@ -1098,6 +1172,91 @@ function updateClock() {
 }
 setInterval(updateClock, 1000);
 updateClock();
+
+// ── 시연 모드 (Demo Mode) ─────────────────────────────────────────────
+// 실데이터가 없을 때 자동 실행 → 실데이터 첫 수신 시 State.demoMode=false 로 자동 종료
+var DEMO_SCENARIOS = [
+    // Exchange Inflow (홍콩/싱가포르 거래소)
+    { fromLabel:'Whale Wallet',    fromLabelType:'Whale',    toLabel:'HashKey Exchange',   toLabelType:'Exchange', risk:'CRITICAL', category:'EXCHANGE_INFLOW',  fromHub:'NYC', toHub:'HKG', minAmt:2500, maxAmt:9000  },
+    { fromLabel:'Unknown Whale',   fromLabelType:'Whale',    toLabel:'OKX Hot Wallet',     toLabelType:'Exchange', risk:'CRITICAL', category:'EXCHANGE_INFLOW',  fromHub:'LON', toHub:'HKG', minAmt:1800, maxAmt:7500  },
+    { fromLabel:'Institutional',   fromLabelType:'Whale',    toLabel:'Binance Hot Wallet', toLabelType:'Exchange', risk:'HIGH',     category:'EXCHANGE_INFLOW',  fromHub:'SFO', toHub:'SIN', minAmt:1200, maxAmt:5000  },
+    { fromLabel:'Jump Trading',    fromLabelType:'Whale',    toLabel:'Coinbase Prime',     toLabelType:'Exchange', risk:'HIGH',     category:'EXCHANGE_INFLOW',  fromHub:'NYC', toHub:'SFO', minAmt:1000, maxAmt:4500  },
+    // OTC Trade
+    { fromLabel:'Cumberland DRW',  fromLabelType:'OTC',      toLabel:'Galaxy Digital',     toLabelType:'OTC',      risk:'HIGH',     category:'OTC_TRADE',        fromHub:'NYC', toHub:'LON', minAmt:5000, maxAmt:20000 },
+    { fromLabel:'Coinbase Prime',  fromLabelType:'Exchange', toLabel:'Amber Group',        toLabelType:'OTC',      risk:'HIGH',     category:'OTC_TRADE',        fromHub:'SFO', toHub:'HKG', minAmt:4000, maxAmt:15000 },
+    { fromLabel:'OSL Digital',     fromLabelType:'OTC',      toLabel:'HashKey Capital',    toLabelType:'OTC',      risk:'HIGH',     category:'OTC_TRADE',        fromHub:'HKG', toHub:'SIN', minAmt:3000, maxAmt:12000 },
+    // Mixer Deposit (CRITICAL)
+    { fromLabel:'Unknown',         fromLabelType:'Unknown',  toLabel:'Tornado Cash',       toLabelType:'Mixer',    risk:'CRITICAL', category:'MIXER_DEPOSIT',    fromHub:'TYO', toHub:'NYC', minAmt:800,  maxAmt:4000  },
+    { fromLabel:'Lazarus Group',   fromLabelType:'Hacker',   toLabel:'Sinbad.io',          toLabelType:'Mixer',    risk:'CRITICAL', category:'MIXER_DEPOSIT',    fromHub:'SEO', toHub:'LON', minAmt:1200, maxAmt:5000  },
+    // Whale Movement
+    { fromLabel:'Binance',         fromLabelType:'Exchange', toLabel:'Cold Wallet',        toLabelType:'ColdWallet',risk:'MEDIUM',  category:'WHALE_MOVEMENT',   fromHub:'SIN', toHub:'DXB', minAmt:1500, maxAmt:6000  },
+    { fromLabel:'Unknown',         fromLabelType:'Unknown',  toLabel:'Vitalik Buterin',    toLabelType:'Whale',    risk:'HIGH',     category:'WHALE_MOVEMENT',   fromHub:'LON', toHub:'SFO', minAmt:2000, maxAmt:8000  },
+    // Darknet
+    { fromLabel:'Unknown',         fromLabelType:'Unknown',  toLabel:'Lazarus Group',      toLabelType:'Hacker',   risk:'CRITICAL', category:'DARKNET',          fromHub:'NYC', toHub:'SEO', minAmt:900,  maxAmt:3500  },
+    // Exchange Outflow (매집 시그널)
+    { fromLabel:'OKX Hot Wallet',  fromLabelType:'Exchange', toLabel:'Cold Wallet',        toLabelType:'ColdWallet',risk:'MEDIUM',  category:'EXCHANGE_OUTFLOW', fromHub:'HKG', toHub:'DXB', minAmt:1000, maxAmt:4000  },
+];
+
+var DEMO_ADDRS = [
+    '0x742d35Cc6634C0532925a3b844Bc454e4438f44e',
+    '0x28C6c06298d514Db089934071355E5743bf21d60',
+    '0xBE0eB53f46cD790Cd13851d5eff43d12404D33e8',
+    '0x6cC5F688a315f3dC28A7781717a9A798a59fda7b',
+    '0xA090e606E30bD747d4E6245a1517EbE430F0057e',
+    '0x2910543Af39aba0Cd09dBb2d50200b3E800A63D2',
+];
+
+function randomAddr() {
+    var base = DEMO_ADDRS[Math.floor(Math.random() * DEMO_ADDRS.length)];
+    return base.substring(0, 10) + Math.random().toString(16).substring(2, 8);
+}
+
+function generateDemoWhale() {
+    var s      = DEMO_SCENARIOS[Math.floor(Math.random() * DEMO_SCENARIOS.length)];
+    var amount = Math.round((s.minAmt + Math.random() * (s.maxAmt - s.minAmt)) * 10) / 10;
+    return {
+        txHash:              '0x' + Math.random().toString(16).substring(2, 18) + Math.random().toString(16).substring(2, 18),
+        chainName:           'Ethereum',
+        assetSymbol:         'ETH',
+        amount:              amount,
+        amountUsd:           amount * 2400,
+        fromAddress:         randomAddr(),
+        toAddress:           randomAddr(),
+        fromLabel:           s.fromLabel,
+        fromLabelType:       s.fromLabelType,
+        toLabel:             s.toLabel,
+        toLabelType:         s.toLabelType,
+        riskLevel:           s.risk,
+        transactionCategory: s.category,
+        fromHub:             s.fromHub,
+        toHub:               s.toHub,
+    };
+}
+
+function startDemoMode() {
+    if (!State.demoMode) return;
+    console.log('[WHALE] 시연 모드 시작 — 실데이터 수신 시 자동 종료');
+
+    // 1.5초 안에 5개 카드 순차 등장 (600ms 간격)
+    for (var i = 0; i < 5; i++) {
+        (function(n) {
+            setTimeout(function() {
+                if (State.demoMode) handleWhaleAlert(generateDemoWhale());
+            }, n * 600);
+        })(i);
+    }
+
+    // 이후 10~20초 간격으로 계속 생성
+    function scheduleNext() {
+        if (!State.demoMode) return;
+        setTimeout(function() {
+            if (!State.demoMode) return;
+            handleWhaleAlert(generateDemoWhale());
+            scheduleNext();
+        }, 10000 + Math.random() * 10000);
+    }
+    scheduleNext();
+}
 
 // ── 유틸 ─────────────────────────────────────────────────────────────
 function formatNum(n) {
@@ -1161,6 +1320,9 @@ if (!getCvs()) {
     syncMobileKpi();
 }());
 
+// ── 티커 초기화 — Thymeleaf 아이템 복제하여 seamless 루프 구성 ────────
+initTicker();
+
 // ── 모바일 탭 전환 ─────────────────────────────────────────────────────
 function switchTab(name) {
     var PANELS = { feed: 'panel-feed', map: 'panel-map', tools: 'panel-tools' };
@@ -1203,6 +1365,7 @@ window.addEventListener('orientationchange', function() {
 });
 
 connectWebSocket();
+setTimeout(startDemoMode, 1500); // 실데이터 없으면 시연 모드 자동 시작
 
 }());
 </script>

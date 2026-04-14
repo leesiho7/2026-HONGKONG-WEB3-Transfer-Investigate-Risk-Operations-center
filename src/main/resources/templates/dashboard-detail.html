@@ -12,8 +12,11 @@
 </head>
 <body>
     <div class="app-container">
+        <!-- 모바일 사이드바 오버레이 -->
+        <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeSidebar()"></div>
+
         <!-- Sidebar -->
-        <aside class="sidebar">
+        <aside class="sidebar" id="mainSidebar">
             <div class="sidebar-header">
                 <div>
                     <h2>Active Incidents</h2>
@@ -47,6 +50,7 @@
             <!-- Header -->
             <header class="header">
                 <div class="header-left">
+                    <button class="btn-hamburger" onclick="openSidebar()">☰</button>
                     <div class="app-logo">
                         <div class="logo-icon">⚡</div>
                         <div>
@@ -484,6 +488,15 @@ function showToast(message, type) {
     }, 3000);
 }
 
+// ── 모바일 사이드바 드로어 ────────────────────────────────────────────
+function openSidebar() {
+    document.getElementById('mainSidebar').classList.add('open');
+    document.getElementById('sidebarBackdrop').classList.add('open');
+}
+function closeSidebar() {
+    document.getElementById('mainSidebar').classList.remove('open');
+    document.getElementById('sidebarBackdrop').classList.remove('open');
+}
 
 </script>
 </body>

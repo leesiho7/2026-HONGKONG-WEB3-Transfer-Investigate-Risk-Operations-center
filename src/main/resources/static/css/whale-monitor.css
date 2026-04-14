@@ -544,6 +544,7 @@ body::after {
 .ticker-item { font-size: 10px; color: var(--text-2); }
 .ticker-item .t-up   { color: var(--green); }
 .ticker-item .t-down { color: var(--red); }
+.ticker-item .t-warn { color: var(--orange); }
 
 /* Toast — 사이버펑크 알림 */
 .toast-container {

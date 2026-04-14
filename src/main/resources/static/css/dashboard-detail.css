@@ -314,3 +314,109 @@ body {
     from { opacity: 1; transform: translateY(0); }
     to   { opacity: 0; transform: translateY(16px); }
 }
+
+/* ── MOBILE RESPONSIVE ───────────────────────────────────────────────── */
+.btn-hamburger { display: none; }
+.sidebar-backdrop {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.65);
+    z-index: 199;
+}
+.sidebar-backdrop.open { display: block; }
+
+@media (max-width: 768px) {
+    /* 앱 컨테이너 — 단일 컬럼 */
+    .app-container {
+        flex-direction: column;
+        height: 100dvh;
+        overflow: hidden;
+    }
+
+    /* 사이드바 — 고정 드로어 */
+    .sidebar {
+        position: fixed;
+        top: 0; left: 0; bottom: 0;
+        width: 280px;
+        z-index: 200;
+        transform: translateX(-100%);
+        transition: transform 0.28s ease;
+    }
+    .sidebar.open { transform: translateX(0); }
+
+    /* 햄버거 버튼 */
+    .btn-hamburger {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 36px; height: 36px;
+        background: transparent;
+        border: 1px solid #374151;
+        border-radius: 6px;
+        font-size: 18px;
+        color: white;
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+
+    /* 헤더 압축 */
+    .header {
+        padding: 10px 14px;
+        gap: 10px;
+        flex-wrap: nowrap;
+    }
+    .header-left { display: flex; align-items: center; gap: 10px; }
+    .logo-icon   { width: 30px; height: 30px; font-size: 15px; flex-shrink: 0; }
+    .app-title   { font-size: 12px; }
+    .app-subtitle { display: none; }
+    .status-indicators { display: none; }
+    .operator-info     { display: none; }
+    .btn-notification  { display: none; }
+
+    /* 메인 콘텐츠 */
+    .main-content { flex: 1; overflow: hidden; }
+    .dashboard-main { padding: 12px; }
+
+    /* 뒤로가기 버튼 */
+    .mb-6 { margin-bottom: 12px; }
+    .mb-6 .btn { width: 100%; text-align: center; }
+
+    /* 케이스 디테일 그리드 — 단일 컬럼 */
+    .case-detail-grid { grid-template-columns: 1fr; gap: 0; }
+    .case-left-col, .case-right-col { gap: 12px; }
+    .card { margin-bottom: 12px; }
+
+    /* 케이스 헤더 */
+    .case-header { padding: 14px; }
+    .case-badges { flex-wrap: wrap; gap: 8px; }
+    .case-title  { font-size: 15px; }
+
+    /* 케이스 메타 — 2열 */
+    .case-meta {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+        padding: 12px;
+    }
+
+    /* 액션 버튼 — 2열 */
+    .action-buttons { padding: 12px; gap: 8px; }
+    .action-buttons .btn { flex: 1 1 calc(50% - 4px); text-align: center; }
+
+    /* 타임라인 compact */
+    .timeline { padding: 12px; }
+    .timeline::before { left: 27px; top: 28px; }
+    .timeline-item { gap: 10px; margin-bottom: 16px; }
+    .timeline-icon { width: 32px; height: 32px; font-size: 12px; }
+
+    /* 코멘트 */
+    .comments-list { padding: 12px; }
+    .comment-form { flex-direction: column; padding: 12px; gap: 8px; }
+    .comment-input { width: 100%; }
+    .comment-form .btn { align-self: flex-end; }
+
+    /* 리스크 게이지 */
+    #caseRiskGauge { max-width: 160px !important; }
+
+    /* 지갑 주소 overflow */
+    .wallet-address { font-size: 10px; word-break: break-all; }
+}
