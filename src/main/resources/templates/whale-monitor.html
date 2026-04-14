@@ -146,9 +146,27 @@
                         </div>
                     </div>
                     <div class="whale-flow">
-                        <span class="addr" th:text="${w.fromAddress != null ? #strings.substring(w.fromAddress,0,8)+'...' : 'unknown'}">0x742d...</span>
+                        <span class="addr-wrap">
+                            <a class="addr"
+                               th:href="${w.fromAddress != null ? 'https://etherscan.io/address/' + w.fromAddress : '#'}"
+                               target="_blank" rel="noopener"
+                               th:text="${w.fromAddress != null ? #strings.substring(w.fromAddress,0,8)+'...' : 'unknown'}">0x742d...</a>
+                            <a class="addr-arkham"
+                               th:if="${w.fromAddress != null}"
+                               th:href="'https://platform.arkhamintelligence.com/explorer/address/' + ${w.fromAddress}"
+                               target="_blank" rel="noopener" title="Arkham Intelligence">⬡</a>
+                        </span>
                         <span class="arrow">→</span>
-                        <span class="addr" th:text="${w.toAddress != null ? #strings.substring(w.toAddress,0,8)+'...' : 'unknown'}">0x28C6...</span>
+                        <span class="addr-wrap">
+                            <a class="addr"
+                               th:href="${w.toAddress != null ? 'https://etherscan.io/address/' + w.toAddress : '#'}"
+                               target="_blank" rel="noopener"
+                               th:text="${w.toAddress != null ? #strings.substring(w.toAddress,0,8)+'...' : 'unknown'}">0x28C6...</a>
+                            <a class="addr-arkham"
+                               th:if="${w.toAddress != null}"
+                               th:href="'https://platform.arkhamintelligence.com/explorer/address/' + ${w.toAddress}"
+                               target="_blank" rel="noopener" title="Arkham Intelligence">⬡</a>
+                        </span>
                     </div>
                     <div class="label-pills">
                         <span class="label-pill"
@@ -905,13 +923,31 @@ function handleWhaleAlert(whale) {
     updateVolumeChart(whale);
 }
 
+// ── Explorer URL helpers ──────────────────────────────────────────────
+function etherscanAddrUrl(addr) {
+    return 'https://etherscan.io/address/' + addr;
+}
+function etherscanTxUrl(hash) {
+    return 'https://etherscan.io/tx/' + hash;
+}
+function arkhamAddrUrl(addr) {
+    return 'https://platform.arkhamintelligence.com/explorer/address/' + addr;
+}
+
+function makeAddrHtml(addr) {
+    if (!addr) return '<span class="addr">unknown</span>';
+    var short = addr.substring(0, 10) + '...';
+    return '<span class="addr-wrap">'
+        + '<a class="addr" href="' + etherscanAddrUrl(addr) + '" target="_blank" rel="noopener" title="Etherscan">' + short + '</a>'
+        + '<a class="addr-arkham" href="' + arkhamAddrUrl(addr) + '" target="_blank" rel="noopener" title="Arkham Intelligence">\u29c6</a>'
+        + '</span>';
+}
+
 // ── Feed Card ─────────────────────────────────────────────────────────
 function addFeedCard(whale) {
     var feed = document.getElementById('whaleFeed');
     if (!feed) return;
     var risk     = (whale.riskLevel || 'info').toLowerCase();
-    var fromAddr = whale.fromAddress ? whale.fromAddress.substring(0,10)+'...' : 'unknown';
-    var toAddr   = whale.toAddress   ? whale.toAddress.substring(0,10)+'...'   : 'unknown';
     var usdVal   = whale.amountUsd   ? '\u2248 $' + formatMoney(whale.amountUsd) : '';
     var sym      = whale.assetSymbol || 'ETH';
     var chainPill = '<span class="label-pill chain-' + sym.toLowerCase() + '">' + sym + '</span>';
@@ -924,9 +960,9 @@ function addFeedCard(whale) {
         + '<span class="whale-time">JUST NOW</span>'
         + '</div></div>'
         + (catBadge ? '<div style="margin-bottom:5px;">' + catBadge + '</div>' : '')
-        + '<div class="whale-flow"><span class="addr">' + fromAddr + '</span>'
+        + '<div class="whale-flow">' + makeAddrHtml(whale.fromAddress)
         + '<span class="arrow">\u2192</span>'
-        + '<span class="addr">' + toAddr + '</span></div>'
+        + makeAddrHtml(whale.toAddress) + '</div>'
         + '<div class="label-pills">' + chainPill
         + makeLabelPill(whale.fromLabel, whale.fromLabelType)
         + makeLabelPill(whale.toLabel,   whale.toLabelType) + '</div>'
@@ -980,7 +1016,7 @@ function showToast(whale, isCritical) {
     div.innerHTML = '<div style="font-weight:700;margin-bottom:4px;color:' + (isCritical ? 'var(--red)' : 'var(--orange)') + '">'
         + (isCritical ? '🚨' : '⚠️') + ' ' + whale.riskLevel + ' WHALE DETECTED</div>'
         + '<div>' + formatNum(whale.amount) + ' ' + (whale.assetSymbol||'ETH') + ' \u2192 ' + (whale.toLabel||'Unknown') + '</div>'
-        + (whale.txHash ? '<div style="font-size:9px;color:var(--text-3);margin-top:2px;">' + whale.txHash.substring(0,20) + '...</div>' : '');
+        + (whale.txHash ? '<div style="font-size:9px;color:var(--text-3);margin-top:2px;"><a href="' + etherscanTxUrl(whale.txHash) + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;" onmouseover="this.style.textDecoration=\'underline\'" onmouseout="this.style.textDecoration=\'none\'">' + whale.txHash.substring(0,20) + '...</a></div>' : '');
     container.appendChild(div);
     setTimeout(function() { div.remove(); }, 5000);
 }

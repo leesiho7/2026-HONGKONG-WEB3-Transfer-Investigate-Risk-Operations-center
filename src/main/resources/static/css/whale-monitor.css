@@ -268,7 +268,19 @@ body::after {
     display: flex; align-items: center; gap: 4px;
     font-size: 10px; margin-bottom: 6px;
 }
-.addr { font-size: 10px; color: var(--text-2); font-family: var(--font-mono); }
+.addr-wrap { display: inline-flex; align-items: center; gap: 3px; }
+.addr {
+    font-size: 10px; color: var(--text-2); font-family: var(--font-mono);
+    text-decoration: none; transition: color 0.15s;
+}
+.addr:hover { color: var(--cyan); text-decoration: underline; }
+.addr-arkham {
+    font-size: 9px; color: var(--text-3); text-decoration: none;
+    opacity: 0; transition: opacity 0.15s, color 0.15s;
+    line-height: 1; padding: 0 1px;
+}
+.whale-card:hover .addr-arkham { opacity: 1; }
+.addr-arkham:hover { color: var(--orange); }
 .arrow { color: var(--text-3); font-size: 10px; }
 
 .label-pills {
