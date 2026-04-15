@@ -21,7 +21,7 @@ import java.util.concurrent.Executor;
  *
  * QuickNode Stream 설정:
  *   - Network : Ethereum Mainnet
- *   - Destination: POST https://<ngrok-url>/api/webhook/quicknode/eth
+ *   - Destination: POST https://calm-elegance-production.up.railway.app/api/webhook/quicknode/eth
  *   - Filter  : transaction value >= 0xDE0B6B3A7640000000  (1,000 ETH in Wei)
  */
 @RestController
@@ -66,7 +66,7 @@ public class QuickNodeWebhookController {
         return ResponseEntity.ok("OK");
     }
 
-    /** ngrok + QuickNode 연결 확인용 헬스체크 */
+    /** Railway + QuickNode 연결 확인용 헬스체크 */
     @GetMapping("/health")
     public ResponseEntity<Map<String, Object>> health() {
         return ResponseEntity.ok(Map.of(
