@@ -32,6 +32,7 @@ public class Web3Incident {
     private Double amount;
     private String assetSymbol;
     private String fromAddress;
+    private String toAddress;
     private String chainName;
     private LocalDateTime createdAt;
 

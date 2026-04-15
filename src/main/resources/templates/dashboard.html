@@ -202,7 +202,21 @@
                                                 <div class="flow-arrow-icon">→</div>
                                                 <div class="flow-box">
                                                     <div class="flow-label">To</div>
-                                                    <div class="flow-address" style="color:#4b5563; font-style:italic;">Destination</div>
+                                                    <!-- toAddress 있으면 Etherscan + Arkham 링크, 없으면 Destination 표시 -->
+                                                    <div class="flow-address-wrap" th:if="${alert.toAddress != null}">
+                                                        <a class="flow-address-link"
+                                                           th:href="'https://etherscan.io/address/' + ${alert.toAddress}"
+                                                           target="_blank" rel="noopener" title="Etherscan에서 확인"
+                                                           onclick="event.stopPropagation()"
+                                                           th:text="${#strings.substring(alert.toAddress,0,12)+'...'}">
+                                                            0x28C6c062...
+                                                        </a>
+                                                        <a class="flow-arkham-btn"
+                                                           th:href="'https://platform.arkhamintelligence.com/explorer/address/' + ${alert.toAddress}"
+                                                           target="_blank" rel="noopener" title="Arkham Intelligence"
+                                                           onclick="event.stopPropagation()">⬡</a>
+                                                    </div>
+                                                    <div class="flow-address" th:if="${alert.toAddress == null}" style="color:#4b5563; font-style:italic;">Destination</div>
                                                     <!-- 거래소 태그 있으면 exchange, 없으면 unknown -->
                                                     <span th:if="${alert.exchangeTag != null}"
                                                           class="flow-entity exchange"
@@ -211,7 +225,7 @@
                                                           class="flow-entity unknown">Unknown</span>
                                                 </div>
                                             </div>
-                                            <!-- TX Hash → Etherscan TX 직접 조회 -->
+                                            <!-- TX Hash → 전체 거래 Etherscan 조회 -->
                                             <div th:if="${alert.txHash != null}" class="flow-tx-row">
                                                 <a class="flow-tx-link"
                                                    th:href="'https://etherscan.io/tx/' + ${alert.txHash}"

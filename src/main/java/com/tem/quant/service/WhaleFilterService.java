@@ -197,6 +197,7 @@ public class WhaleFilterService {
         incident.setAmount(tx.getAmount());
         incident.setAssetSymbol(tx.getAssetSymbol());
         incident.setFromAddress(tx.getFromAddress());
+        incident.setToAddress(tx.getToAddress());
         incident.setChainName(tx.getChainName());
         incident.setIncidentType(incidentType);
         incident.setTransactionCategory(category.name());
