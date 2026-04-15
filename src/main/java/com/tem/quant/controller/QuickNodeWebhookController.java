@@ -3,21 +3,21 @@ package com.tem.quant.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tem.quant.service.WebhookQueueConsumer;
 import com.tem.quant.service.WhaleFilterService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.ResponseEntity;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import java.util.concurrent.Executor;
 
 /**
  * QuickNode Streams 웹훅 수신 컨트롤러 — Ethereum Mainnet 전용
  *
  * 처리 흐름:
  *   POST /eth → Redis LPUSH (whale:webhook:eth) → 즉시 200 OK 반환
- *   (Redis 장애 시 whaleExecutor 직접 처리로 폴백, 데이터 유실 없음)
+ *   (Redis 장애 시 webhookTaskExecutor 직접 처리로 폴백, 데이터 유실 없음)
  *
  * QuickNode Stream 설정:
  *   - Network : Ethereum Mainnet
@@ -26,14 +26,23 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/webhook/quicknode")
-@RequiredArgsConstructor
 @Slf4j
 public class QuickNodeWebhookController {
 
     private final WhaleFilterService whaleFilterService;
     private final StringRedisTemplate redisTemplate;
-    private final ThreadPoolTaskExecutor whaleExecutor;
+    private final Executor webhookTaskExecutor;
     private final ObjectMapper objectMapper;
+
+    public QuickNodeWebhookController(WhaleFilterService whaleFilterService,
+                                       StringRedisTemplate redisTemplate,
+                                       @Qualifier("webhookTaskExecutor") Executor webhookTaskExecutor,
+                                       ObjectMapper objectMapper) {
+        this.whaleFilterService  = whaleFilterService;
+        this.redisTemplate       = redisTemplate;
+        this.webhookTaskExecutor = webhookTaskExecutor;
+        this.objectMapper        = objectMapper;
+    }
 
     /** ETH 트랜잭션 웹훅 수신 */
     @PostMapping("/eth")
@@ -49,9 +58,9 @@ public class QuickNodeWebhookController {
             String json = objectMapper.writeValueAsString(payload);
             redisTemplate.opsForList().leftPush(WebhookQueueConsumer.QUEUE_KEY, json);
         } catch (Exception e) {
-            // Redis 장애 시: new Thread() 대신 bounded executor로 직접 처리 (데이터 유실 방지)
+            // Redis 장애 시: bounded executor로 직접 처리 (데이터 유실 방지)
             log.warn("⚠️  Redis 큐잉 실패 → executor 직접 처리 폴백: {}", e.getMessage());
-            whaleExecutor.execute(() -> whaleFilterService.processEthWebhook(payload));
+            webhookTaskExecutor.execute(() -> whaleFilterService.processEthWebhook(payload));
         }
 
         return ResponseEntity.ok("OK");
@@ -61,10 +70,10 @@ public class QuickNodeWebhookController {
     @GetMapping("/health")
     public ResponseEntity<Map<String, Object>> health() {
         return ResponseEntity.ok(Map.of(
-            "status",   "UP",
-            "chain",    "Ethereum Mainnet",
-            "endpoint", "POST /api/webhook/quicknode/eth",
-            "threshold","1,000 ETH",
+            "status",    "UP",
+            "chain",     "Ethereum Mainnet",
+            "endpoint",  "POST /api/webhook/quicknode/eth",
+            "threshold", "1,000 ETH",
             "queueSize", getQueueSize()
         ));
     }

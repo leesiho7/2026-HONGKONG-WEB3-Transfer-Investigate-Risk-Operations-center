@@ -2,31 +2,30 @@ package com.tem.quant.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.DisposableBean;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.util.Map;
+import java.util.concurrent.Executor;
 
 /**
  * Redis 웹훅 큐 컨슈머
  *
  * 구조:
  *   QuickNodeWebhookController → LPUSH whale:webhook:eth
- *   [consumer-0, consumer-1]   → BRPOP → whaleExecutor → processEthWebhook()
+ *   [consumer-0, consumer-1]   → BRPOP → webhookTaskExecutor → processEthWebhook()
  *
  * - 컨슈머 스레드는 2개로 고정 (Redis I/O 전담, 경량)
- * - 실제 처리는 whaleExecutor (ThreadPoolTaskExecutor) 에 위임
+ * - 실제 처리는 webhookTaskExecutor (ThreadPoolTaskExecutor) 에 위임
  * - CallerRunsPolicy 로 풀 포화 시 컨슈머 스레드가 직접 처리 → 자동 백프레셔
  */
 @Component
-@RequiredArgsConstructor
 @Slf4j
 public class WebhookQueueConsumer implements DisposableBean {
 
@@ -38,10 +37,20 @@ public class WebhookQueueConsumer implements DisposableBean {
 
     private final StringRedisTemplate redisTemplate;
     private final WhaleFilterService whaleFilterService;
-    private final ThreadPoolTaskExecutor whaleExecutor;
+    private final Executor webhookTaskExecutor;
     private final ObjectMapper objectMapper;
 
     private volatile boolean running = false;
+
+    public WebhookQueueConsumer(StringRedisTemplate redisTemplate,
+                                 WhaleFilterService whaleFilterService,
+                                 @Qualifier("webhookTaskExecutor") Executor webhookTaskExecutor,
+                                 ObjectMapper objectMapper) {
+        this.redisTemplate       = redisTemplate;
+        this.whaleFilterService  = whaleFilterService;
+        this.webhookTaskExecutor = webhookTaskExecutor;
+        this.objectMapper        = objectMapper;
+    }
 
     @EventListener(ApplicationReadyEvent.class)
     public void startConsumers() {
@@ -65,8 +74,8 @@ public class WebhookQueueConsumer implements DisposableBean {
 
                 Map<String, Object> payload = objectMapper.readValue(json, MAP_TYPE);
 
-                // whaleExecutor 에 처리 위임 (CallerRunsPolicy: 포화 시 본 스레드가 직접 처리)
-                whaleExecutor.execute(() -> whaleFilterService.processEthWebhook(payload));
+                // webhookTaskExecutor 에 처리 위임 (CallerRunsPolicy: 포화 시 본 스레드가 직접 처리)
+                webhookTaskExecutor.execute(() -> whaleFilterService.processEthWebhook(payload));
 
             } catch (Exception e) {
                 if (running) {
