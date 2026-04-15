@@ -5,6 +5,8 @@ import com.tem.quant.entity.Severity;
 import com.tem.quant.repository.Web3IncidentRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,12 +26,14 @@ public class IncidentService {
     private final Web3IncidentRepository repository;
 
     /**
-     * 1. 메인 리스트용: 모든 사건을 최신순으로 조회 (Critical Alerts 영역)
+     * 1. 메인 리스트용: 최신 100건만 조회 (Critical Alerts 영역)
+     *    findAll() 전체 로딩 → Pageable(100건) 으로 변경, 메모리 사용량 대폭 절감
      */
     @Transactional(readOnly = true)
     public List<Web3Incident> getAllIncidents() {
         try {
-            return repository.findAll(Sort.by(Sort.Direction.DESC, "createdAt"));
+            Pageable pageable = PageRequest.of(0, 100, Sort.by(Sort.Direction.DESC, "createdAt"));
+            return repository.findAll(pageable).getContent();
         } catch (Exception e) {
             log.error("전체 사건 조회 중 오류 발생: {}", e.getMessage());
             return List.of();

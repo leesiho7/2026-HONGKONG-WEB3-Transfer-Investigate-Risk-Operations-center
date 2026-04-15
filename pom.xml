@@ -78,6 +78,12 @@
 			<scope>test</scope>
 		</dependency>
 
+		<!-- Redis (웹훅 큐잉 + 컨슈머) -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-redis</artifactId>
+		</dependency>
+
 		<!-- Caffeine In-Memory Cache (Arkham API 응답 캐싱) -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
