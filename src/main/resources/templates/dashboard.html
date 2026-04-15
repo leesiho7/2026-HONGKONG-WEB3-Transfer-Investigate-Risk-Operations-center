@@ -182,19 +182,27 @@
                                             <div class="flow-row">
                                                 <div class="flow-box">
                                                     <div class="flow-label">From</div>
-                                                    <div class="flow-address"
-                                                         th:text="${alert.fromAddress != null ? #strings.substring(alert.fromAddress,0,12)+'...' : 'Unknown'}">
-                                                        0x742d35Cc...
+                                                    <!-- 주소 클릭 → Etherscan, ⬡ → Arkham (카드 호버 시 표시) -->
+                                                    <div class="flow-address-wrap" th:if="${alert.fromAddress != null}">
+                                                        <a class="flow-address-link"
+                                                           th:href="'https://etherscan.io/address/' + ${alert.fromAddress}"
+                                                           target="_blank" rel="noopener" title="Etherscan에서 확인"
+                                                           onclick="event.stopPropagation()"
+                                                           th:text="${#strings.substring(alert.fromAddress,0,12)+'...'}">
+                                                            0x742d35Cc...
+                                                        </a>
+                                                        <a class="flow-arkham-btn"
+                                                           th:href="'https://platform.arkhamintelligence.com/explorer/address/' + ${alert.fromAddress}"
+                                                           target="_blank" rel="noopener" title="Arkham Intelligence"
+                                                           onclick="event.stopPropagation()">⬡</a>
                                                     </div>
+                                                    <div class="flow-address" th:if="${alert.fromAddress == null}">Unknown</div>
                                                     <span class="flow-entity unknown">Unknown Wallet</span>
                                                 </div>
                                                 <div class="flow-arrow-icon">→</div>
                                                 <div class="flow-box">
                                                     <div class="flow-label">To</div>
-                                                    <div class="flow-address"
-                                                         th:text="${alert.fromAddress != null ? #strings.substring(alert.fromAddress,0,12)+'...' : 'Unknown'}">
-                                                        0x28C6c062...
-                                                    </div>
+                                                    <div class="flow-address" style="color:#4b5563; font-style:italic;">Destination</div>
                                                     <!-- 거래소 태그 있으면 exchange, 없으면 unknown -->
                                                     <span th:if="${alert.exchangeTag != null}"
                                                           class="flow-entity exchange"
@@ -202,6 +210,15 @@
                                                     <span th:if="${alert.exchangeTag == null}"
                                                           class="flow-entity unknown">Unknown</span>
                                                 </div>
+                                            </div>
+                                            <!-- TX Hash → Etherscan TX 직접 조회 -->
+                                            <div th:if="${alert.txHash != null}" class="flow-tx-row">
+                                                <a class="flow-tx-link"
+                                                   th:href="'https://etherscan.io/tx/' + ${alert.txHash}"
+                                                   target="_blank" rel="noopener"
+                                                   onclick="event.stopPropagation()">
+                                                    TX ↗ <span th:text="${#strings.substring(alert.txHash,0,20)+'...'}">0x1a2b3c...</span>
+                                                </a>
                                             </div>
 
                                             <!-- 4가지 핵심 지표 -->
