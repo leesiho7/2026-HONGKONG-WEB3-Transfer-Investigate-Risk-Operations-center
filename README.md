@@ -42,3 +42,6 @@ Why ROC for HashKey?
    * Compliance Ready: Specifically tuned to detect unusual inflows to regulated exchanges.
    * Geo-Aware: Optimized for the Hong Kong/Singapore Web3 hub ecosystem.
    * Scalable Architecture: Built on robust Spring Boot infrastructure ready for enterprise deployment.
+
+     <img width="761" height="317" alt="제목 없는 다이어그램 drawio" src="https://github.com/user-attachments/assets/4caf7711-8fe1-4a3b-ab2d-2b96f2e13c34" />
+
