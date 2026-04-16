@@ -53,11 +53,26 @@ public class WhaleFilterService {
     @SuppressWarnings("unchecked")
     public void processEthWebhook(Map<String, Object> payload) {
         try {
-            List<Map<String, Object>> dataList = (List<Map<String, Object>>) payload.get("data");
-            if (dataList == null || dataList.isEmpty()) return;
+            Object dataObj = payload.get("data");
+            if (dataObj == null) return;
 
-            for (Map<String, Object> tx : dataList) {
-                processEthTransaction(tx);
+            List<?> dataList = (List<?>) dataObj;
+            if (dataList.isEmpty()) return;
+
+            for (Object item : dataList) {
+                if (item instanceof List<?> batch) {
+                    // QuickNode 실제 포맷: data = [ [tx, tx, ...], ... ]
+                    for (Object txObj : batch) {
+                        if (txObj instanceof Map<?, ?> tx) {
+                            processEthTransaction((Map<String, Object>) tx);
+                        }
+                    }
+                } else if (item instanceof Map<?, ?> tx) {
+                    // 플랫 포맷(예비 대응): data = [ tx, tx, ... ]
+                    processEthTransaction((Map<String, Object>) tx);
+                } else {
+                    log.warn("⚠️  알 수 없는 data 항목 타입: {}", item == null ? "null" : item.getClass().getSimpleName());
+                }
             }
         } catch (Exception e) {
             log.error("ETH 웹훅 처리 실패: {}", e.getMessage(), e);
