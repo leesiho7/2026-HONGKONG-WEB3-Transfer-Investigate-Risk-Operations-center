@@ -22,7 +22,7 @@ import java.util.concurrent.Executor;
  * QuickNode Stream 설정:
  *   - Network : Ethereum Mainnet
  *   - Destination: POST https://calm-elegance-production.up.railway.app/api/webhook/quicknode/eth
- *   - Filter  : transaction value >= 0xDE0B6B3A7640000000  (1,000 ETH in Wei)
+ *   - Filter  : transaction value >= 0x3635C9ADC5DEA00000  (1,000 ETH in Wei)
  */
 @RestController
 @RequestMapping("/api/webhook/quicknode")
